@@ -1,0 +1,141 @@
+---
+title: "Questionnaire Analysis"
+author: "Or Duek & Tobias R. Spiller"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+
+---
+
+
+```{r, results='hide',  message=FALSE, warning=FALSE, include=FALSE}
+# load libraries
+require(tidyverse)
+require(dplyr)
+require(ggplot2)
+require(bootnet)
+require(qgraph)
+# map
+require(sf)
+require(mapview)
+
+# tables
+require(gtsummary)
+```
+
+```{r, results='hide', message=FALSE, warning=FALSE, include=FALSE}
+# load data - removing first line (which is dictionary)
+df_all <- read.csv('PCL-V+Randomization_first_batch_8_17_22.csv', header = F)
+
+# grab headers from second line
+headers <- df_all[2,]
+# grab all data
+df <- df_all[3:nrow(df_all),]
+# make DF great again
+colnames(df) = headers
+summary(data.frame(df))
+
+# save to csv
+write_csv(df, "pcl.csv")
+# now read it again
+df <- read.csv('pcl.csv')
+# for reference - grab first line (dictionary)
+dict <- df_all[1,]
+# print if needed
+#as.character(dict)
+```
+
+
+
+# Location of responders
+
+```{r}
+df %>% dplyr::filter(Q62==2) %>% mapview(xcol = "LocationLongitude", ycol = "LocationLatitude", crs = 4269,  grid = F)
+```
+
+
+Two people marked that they live in US but they actually filled it from a different location
+
+## Attention Checks
+
+Let's see how many failed the attention check
+
+- Asking about Moon and Earth
+- Asking about colors (say all)
+- Asking about No. of traumas (say 5)
+
+```{r}
+
+df_attent <- df %>% select(Q66, Q65, Q64)
+
+# moon
+df_attent %>% drop_na(Q66) %>% select(Q66) %>% tbl_summary()
+
+# traumas
+df_attent %>% drop_na(Q64) %>% select(Q64) %>% tbl_summary()
+
+# colors (I remove based on 64, as 65 is character, so no NAs)
+df_attent %>% drop_na(Q64) %>% select(Q65) %>% tbl_summary()
+
+```
+
+
+Lets just grab the dichotomous question (which is more central emotional pain or fear), and see if it correlates with the manual scale
+
+```{r}
+# 40  -dicho, 67 - trauma reminder, 68 - emotional pain
+
+df2 <- df[2:nrow(df),c(9,40, 67, 68)]
+# changing column names
+colnames(df2)[2] = "dich"
+colnames(df2)[3] = "fear"
+colnames(df2)[4] = "pain"
+
+#df2[,2] <- as.numeric(df2[,2])
+df2[,3] <- as.numeric(df2[,3])
+df2[,4] <- as.numeric(df2[,4])
+summary(df2)
+df2 <- drop_na(df2) # 18 subjects
+
+ggplot(df2, aes(x=dich, y=pain, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Emotional pain as factor of the Dichotomous question")
+
+ggplot(df2, aes(x=dich, y=fear, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Fear as factor of the Dichotomous question")
+```
+
+
+OK, looks relatively ok - with each group more relating to the relevant scale
+
+## Network Analysis
+
+
+```{r}
+# organize dataframe including PCL and RTQ
+
+
+df_pcl <- df[,41:60]
+df_rtq <- df[,86:95]
+df_pcl_rtq <- drop_na(cbind(df_pcl, df_rtq))
+
+```
+
+Some sanity checks
+
+```{r}
+# rtq total
+hist(rowSums(df_pcl_rtq[,21:30]))
+
+# pcl total
+hist(rowSums(df_pcl_rtq[,1:20]))
+
+```
+
+
+Building network
+
+```{r}
+n1 <- estimateNetwork(df_pcl_rtq[,1:20], default="huge", corMethod = "cor", corArgs = list(method="spearman"), threshold=FALSE)
+g2 <- plot(n1, legend.cex=.5, vsize=7)
+```
+
