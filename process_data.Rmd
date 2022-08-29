@@ -47,6 +47,15 @@ dict <- df_all[1,]
 #as.character(dict)
 ```
 
+# Basic Demographics
+
+- Age and Sex
+
+```{r}
+df %>%  select(Q34) %>% tbl_summary() # need to add labels
+
+ggplot(df, aes(x=Q33)) + geom_histogram(bins=10, fill = 'lightblue') +theme_minimal() + ggtitle("Age Histogram (Before omitting")
+```
 
 
 # Location of responders
@@ -58,7 +67,7 @@ df %>% dplyr::filter(Q62==2) %>% mapview(xcol = "LocationLongitude", ycol = "Loc
 
 Two people marked that they live in US but they actually filled it from a different location
 
-## Attention Checks
+# Attention Checks
 
 Let's see how many failed the attention check
 
@@ -81,6 +90,7 @@ df_attent %>% drop_na(Q64) %>% select(Q65) %>% tbl_summary()
 
 ```
 
+# Sanity 
 
 Lets just grab the dichotomous question (which is more central emotional pain or fear), and see if it correlates with the manual scale
 
@@ -107,8 +117,9 @@ ggplot(df2, aes(x=dich, y=fear, group = dich)) + geom_boxplot() + theme_minimal(
 
 OK, looks relatively ok - with each group more relating to the relevant scale
 
-## Network Analysis
+# Network Analysis
 
+## Hisotgams of RTQ and PCL
 
 ```{r}
 # organize dataframe including PCL and RTQ
@@ -132,7 +143,7 @@ hist(rowSums(df_pcl_rtq[,1:20]))
 ```
 
 
-Building network
+## Building network
 
 ```{r}
 n1 <- estimateNetwork(df_pcl_rtq[,1:20], default="huge", corMethod = "cor", corArgs = list(method="spearman"), threshold=FALSE)
