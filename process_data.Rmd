@@ -27,22 +27,22 @@ require(gtsummary)
 
 ```{r, results='hide', message=FALSE, warning=FALSE, include=FALSE}
 # load data - removing first line (which is dictionary)
-df_all <- read.csv('PCL-V+Randomization_first_batch_8_17_22.csv', header = F)
-
+#df_all <- read.csv('PCL-V+Randomization_first_batch_8_17_22.csv', header = F)
+df_all <- read.csv('data/PCL-V+Randomization+&+NAPS+Image+Rating_November+4,+2022_10.43_clean.csv')
 # grab headers from second line
-headers <- df_all[2,]
+#headers <- df_all[1,]
 # grab all data
-df <- df_all[3:nrow(df_all),]
+df <- df_all#[3:nrow(df_all),]
 # make DF great again
-colnames(df) = headers
-summary(data.frame(df))
+c#olnames(df) = headers
+#summary(data.frame(df))
 
 # save to csv
-write_csv(df, "pcl.csv")
-# now read it again
-df <- read.csv('pcl.csv')
-# for reference - grab first line (dictionary)
-dict <- df_all[1,]
+# write_csv(df, "data/pcl_clean.csv")
+# # now read it again
+# df <- read.csv('data/pcl_clean.csv')
+# # for reference - grab first line (dictionary)
+# dict <- df_all[1,]
 # print if needed
 #as.character(dict)
 ```
@@ -52,7 +52,9 @@ dict <- df_all[1,]
 - Age and Sex
 
 ```{r}
-df %>%  select(Q34) %>% tbl_summary() # need to add labels
+#
+df %>%  select(Q34) %>% mutate(Q34 = factor(Q34, levels=c(1:4), labels = c("Male","Female","Non-Binary/Other","Prefer Not to say"))) %>%
+  tbl_summary(label = list(Q34 ~ "Sex")) # need to add labels
 
 ggplot(df, aes(x=Q33)) + geom_histogram(bins=10, fill = 'lightblue') +theme_minimal() + ggtitle("Age Histogram (Before omitting")
 ```
@@ -61,7 +63,7 @@ ggplot(df, aes(x=Q33)) + geom_histogram(bins=10, fill = 'lightblue') +theme_mini
 # Location of responders
 
 ```{r}
-df %>% dplyr::filter(Q62==2) %>% mapview(xcol = "LocationLongitude", ycol = "LocationLatitude", crs = 4269,  grid = F)
+df %>% dplyr::filter(Q62==2) %>% drop_na(LocationLongitude) %>% mapview(xcol = "LocationLongitude", ycol = "LocationLatitude", crs = 4269,  grid = F)
 ```
 
 
@@ -95,19 +97,16 @@ df_attent %>% drop_na(Q64) %>% select(Q65) %>% tbl_summary()
 Lets just grab the dichotomous question (which is more central emotional pain or fear), and see if it correlates with the manual scale
 
 ```{r}
-# 40  -dicho, 67 - trauma reminder, 68 - emotional pain
+# 40  -dicho (1=pain, 2=fear), 67 - trauma reminder, 68 - emotional pain
 
-df2 <- df[2:nrow(df),c(9,40, 67, 68)]
+df2 <- df %>% select(Q47, Q39_1, Q40_1)#$[2:nrow(df),c(9,40, 67, 68)]
 # changing column names
-colnames(df2)[2] = "dich"
-colnames(df2)[3] = "fear"
-colnames(df2)[4] = "pain"
-
-#df2[,2] <- as.numeric(df2[,2])
-df2[,3] <- as.numeric(df2[,3])
-df2[,4] <- as.numeric(df2[,4])
+colnames(df2)[1] = "dich"
+colnames(df2)[2] = "fear"
+colnames(df2)[3] = "pain"
+df2$dich <- factor(df2$dich)
 summary(df2)
-df2 <- drop_na(df2) # 18 subjects
+df2 <- drop_na(df2) # 44 subjects
 
 ggplot(df2, aes(x=dich, y=pain, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Emotional pain as factor of the Dichotomous question")
 
@@ -117,18 +116,15 @@ ggplot(df2, aes(x=dich, y=fear, group = dich)) + geom_boxplot() + theme_minimal(
 
 OK, looks relatively ok - with each group more relating to the relevant scale
 
-# Network Analysis
+# Histograms
 
 ## Hisotgams of RTQ and PCL
 
 ```{r}
 # organize dataframe including PCL and RTQ
-
-
 df_pcl <- df[,41:60]
-df_rtq <- df[,86:95]
+df_rtq <- df %>% select(starts_with('Q50'))#df[,86:95]
 df_pcl_rtq <- drop_na(cbind(df_pcl, df_rtq))
-
 ```
 
 Some sanity checks
@@ -140,13 +136,26 @@ hist(rowSums(df_pcl_rtq[,21:30]))
 # pcl total
 hist(rowSums(df_pcl_rtq[,1:20]))
 
+summary(rowSums(df_pcl_rtq[,1:20]))
 ```
 
 
-## Building network
+<!-- ## Building network -->
+
+<!-- ```{r} -->
+<!-- n1 <- estimateNetwork(df_pcl_rtq[,1:20], default="huge", corMethod = "cor", corArgs = list(method="spearman"), threshold=FALSE) -->
+<!-- g2 <- plot(n1, legend.cex=.5, vsize=7) -->
+
+### Histogram of each PCL item
 
 ```{r}
-n1 <- estimateNetwork(df_pcl_rtq[,1:20], default="huge", corMethod = "cor", corArgs = list(method="spearman"), threshold=FALSE)
-g2 <- plot(n1, legend.cex=.5, vsize=7)
+for (i in 1:20) {
+  p <- ggplot(data=df_pcl_rtq, aes(x=df_pcl_rtq[,i])) + geom_histogram(binwidth = 1) + theme_bw() + ggtitle('PCL', i)
+  #hist(df_pcl_rtq[,i])
+  print(p)
+}
+
+
+
 ```
 

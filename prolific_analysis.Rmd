@@ -1,0 +1,150 @@
+---
+title: "Questionnaire Analysis"
+author: "Or Duek & Tobias R. Spiller"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+
+---
+
+
+```{r, results='hide',  message=FALSE, warning=FALSE, include=FALSE}
+# load libraries
+require(tidyverse)
+require(dplyr)
+require(ggplot2)
+require(bootnet)
+require(qgraph)
+# map
+require(sf)
+require(mapview)
+
+# tables
+require(gtsummary)
+# xls
+library(readxl)
+```
+
+# Analysing Prolific Data
+
+```{r}
+# read data
+df <- read.csv('Prolific_trauma-exp_only_PCL-V_Randomization.csv', na.strings=c("","NA"))
+```
+
+# Basic Demographics
+
+- Age and Sex
+
+```{r}
+#
+df %>%  select(Q34) %>% mutate(Q34 = factor(Q34, levels=c(1:4), labels = c("Male","Female","Non-Binary/Other","Prefer Not to say"))) %>%
+  tbl_summary(label = list(Q34 ~ "Sex")) # need to add labels
+
+# age is not clean, need to go over, if not numeric then set as NA
+df <- df %>% mutate (
+  age = as.numeric(df$Q33)
+)
+
+ggplot(df, aes(x=age)) + geom_histogram(bins=10, fill = 'lightblue') +theme_minimal() + ggtitle("Age Histogram (Before omitting")
+
+# Education
+df %>%  select(Q32) %>% mutate(Q32 = factor(Q32, levels=c(1:6), labels = c("1","2","3","4", "5","6"))) %>%
+  tbl_summary(label = list(Q32 ~ "Education")) # need to add labels
+```
+
+# Location of responders
+
+```{r}
+df %>%  drop_na(LocationLongitude) %>% mapview(xcol = "LocationLongitude", ycol = "LocationLatitude", crs = 4269,  grid = F)
+```
+
+# Attention Checks
+
+Let's see how many failed the attention check
+
+- Asking about Moon and Earth
+- Asking about colors (say all)
+- Asking about No. of traumas (say 5)
+
+```{r}
+
+df %>% select(Q65) %>% drop_na()  %>% tbl_summary()
+
+```
+
+Only one person failed attention check
+
+
+# Sanity 
+
+Lets just grab the dichotomous question (which is more central emotional pain or fear), and see if it correlates with the manual scale
+
+```{r}
+# 40  -dicho (1=pain, 2=fear), 67 - trauma reminder, 68 - emotional pain
+
+df2 <- df %>% select(Q47, Q39_1, Q40_1)#$[2:nrow(df),c(9,40, 67, 68)]
+# changing column names
+colnames(df2)[1] = "dich"
+colnames(df2)[2] = "fear"
+colnames(df2)[3] = "pain"
+df2$dich <- factor(df2$dich)
+summary(df2)
+df2 <- drop_na(df2) # 44 subjects
+
+ggplot(df2, aes(x=dich, y=pain, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Emotional pain as factor of the Dichotomous question")
+
+ggplot(df2, aes(x=dich, y=fear, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Fear as factor of the Dichotomous question")
+summary(lm(fear ~ dich, data=df2))
+```
+## Calculate Total Scores
+
+```{r}
+# PCL items: Q2 - Q21
+# PCL break: Q42 (fear/horror), Q43 (guilt/shame), Q44 (anger), Q45(blame yourself), Q46(Blame others)
+# These will replace Q11 and Q12
+# RTQ items: Q50_1 - Q50_10
+# ASI items: Q51_1 - Q51_16
+# GAD items: Q38_1 - Q38_7
+# PHQ-9: Q37_1 - Q37_9
+```
+
+### PCL-5 Total Score
+```{r}
+df <- df %>% rowwise(ResponseId) %>% mutate(totalPCL = sum(c(Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21)),
+                                            totalRTQ = sum(c(Q50_1,Q50_2, Q50_3, Q50_3, Q50_5, Q50_6, Q50_7, Q50_8, Q50_9, Q50_10))
+                                                                                        )
+hist(df$totalPCL)
+hist(df$totalRTQ)
+```
+
+### Test histogram of RTQ within different cutoffs of PCL
+```{r}
+
+df_highP <- df %>% filter(totalPCL>=28)
+df_lowP <- df %>% filter(totalPCL<28)
+
+par(mfrow=c(2,1))
+ 
+#Make the plot
+par(mar=c(2,5,1,2))
+hist(df_highP$totalRTQ , main="" , ylab="Frequency for high PCL", xlab="", xaxt="n", ylim=c(0,100), las=1 , col="slateblue1", breaks=10)
+hist(df_lowP$totalRTQ, main="", ylab="Frequency for low PCL", xlab="RTQ-10 Score", ylim=c(100,0),las=1 , col="tomato3"  , breaks=10)
+
+```
+
+### Correlation between RTQ and PCL
+```{r}
+df <- df %>% mutate(
+  pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
+                      totalPCL<28 ~ "LowPCL")
+)
+df %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalPCL)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+
+cor.test(df$totalPCL, df$totalRTQ)
+```
+
+Correlation of 0.66.
+
