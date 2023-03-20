@@ -17,6 +17,8 @@ require(dplyr)
 require(ggplot2)
 require(bootnet)
 require(qgraph)
+require(psychonetrics)
+
 # map
 require(sf)
 require(mapview)
@@ -113,18 +115,34 @@ summary(lm(fear ~ dich, data=df2))
 
 ### PCL-5 Total Score
 ```{r}
-df <- df %>% rowwise(ResponseId) %>% mutate(totalPCL = sum(c(Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21)),
-                                            totalRTQ = sum(c(Q50_1,Q50_2, Q50_3, Q50_3, Q50_5, Q50_6, Q50_7, Q50_8, Q50_9, Q50_10))
-                                                                                        )
-hist(df$totalPCL)
-hist(df$totalRTQ)
+df_2 <- df %>% 
+  slice(-1) %>%
+  mutate(across(Q2:Q21, as.numeric),
+         across(Q50_1:Q50_10, as.numeric),
+         across(Q37_1:Q37_9, as.numeric),
+         across(Q38_1:Q38_7, as.numeric),
+         across(Q51_1:Q51_16, as.numeric)) %>% 
+  rowwise(ResponseId) %>%
+  mutate(totalPCL = sum(c(Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21)),
+         totalRTQ = sum(c(Q50_1,Q50_2, Q50_3, Q50_3, Q50_5, Q50_6, Q50_7, Q50_8, Q50_9, Q50_10)),
+         totalPHQ = sum(Q37_1, Q37_2, Q37_3, Q37_4, Q37_5, Q37_6, Q37_7, Q37_8, Q37_9),
+         totalGAD = sum(Q38_1, Q38_2, Q38_3, Q38_4, Q38_5, Q38_6, Q38_7),
+         totalASI = sum(Q51_1, Q51_2, Q51_3, Q51_4, Q51_5, Q51_6, Q51_7, Q51_8, Q51_9, Q51_10, Q51_11, Q51_12, Q51_13, Q51_14, Q51_15, Q51_16))
+ 
+
+hist(df_2$totalPCL)
+hist(df_2$totalRTQ)
+hist(df_2$totalPHQ)
+hist(df_2$totalGAD)
+hist(df_2$totalASI)
+
 ```
 
 ### Test histogram of RTQ within different cutoffs of PCL
 ```{r}
 
-df_highP <- df %>% filter(totalPCL>=28)
-df_lowP <- df %>% filter(totalPCL<28)
+df_highP <- df_2 %>% filter(totalPCL>=28)
+df_lowP <- df_2 %>% filter(totalPCL<28)
 
 par(mfrow=c(2,1))
  
@@ -137,14 +155,229 @@ hist(df_lowP$totalRTQ, main="", ylab="Frequency for low PCL", xlab="RTQ-10 Score
 
 ### Correlation between RTQ and PCL
 ```{r}
-df <- df %>% mutate(
+df_2 <- df_2 %>% mutate(
   pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
                       totalPCL<28 ~ "LowPCL")
 )
-df %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalPCL)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+df_2 %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalPCL)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
 
-cor.test(df$totalPCL, df$totalRTQ)
+cor.test(df_2$totalPCL, df_2$totalRTQ)
 ```
 
 Correlation of 0.66.
+
+
+### Correlation between PCL and GAD
+```{r}
+df_2 <- df_2 %>% mutate(
+  pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
+                      totalPCL<28 ~ "LowPCL")
+)
+df_2 %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalGAD)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+
+cor.test(df_2$totalPCL, df_2$totalGAD)
+```
+
+### Correlation between PCL and ASI
+```{r}
+df_2 <- df_2 %>% mutate(
+  pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
+                      totalPCL<28 ~ "LowPCL")
+)
+df_2 %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalASI)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+
+cor.test(df_2$totalPCL, df_2$totalASI)
+```
+
+
+### Correlation between RTQ and ASI
+```{r}
+df_2 %>% ggplot(aes(x=totalRTQ, y=totalASI)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+
+cor.test(df_2$totalRTQ, df_2$totalASI)
+```
+
+```{r LNM rename, echo=FALSE, message=TRUE, warning=FALSE}
+df_factor <- df_2 %>% 
+    rename(PCL1 = Q2,
+         PCL2 = Q3,
+         PCL3 = Q4,
+         PCL4 = Q5,
+         PCL5 = Q6,
+         PCL6 = Q7,
+         PCL7 = Q8,
+         PCL8 = Q9,
+         PCL9 = Q10,
+         PCL10 = Q11,
+         PCL11 = Q12,
+         PCL12 = Q13,
+         PCL13 = Q14,
+         PCL14 = Q15,
+         PCL15 = Q16,
+         PCL16 = Q17,
+         PCL17 = Q18,
+         PCL18 = Q19,
+         PCL19 = Q20,
+         PCL20 = Q21)
+
+```
+
+
+```{r LNM 3 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+# Rename
+# Factor structure
+Latents_3_factor<-c("PCL","RTQ", "ASI")
+
+# Variables
+vars_3 <- c("PCL1", "PCL2", "PCL3", "PCL4", "PCL5", "PCL6", "PCL7", "PCL8", "PCL9", "PCL10", 
+            "PCL11", "PCL12", "PCL13", "PCL14", "PCL15", "PCL16", "PCL17", "PCL18", "PCL19", "PCL20", 
+            "Q50_1", "Q50_2", "Q50_3", "Q50_4", "Q50_5", "Q50_6", "Q50_7", "Q50_8", "Q50_9", "Q50_10", 
+            "Q51_1", "Q51_2", "Q51_3", "Q51_4", "Q51_5", "Q51_6", "Q51_7", "Q51_8", "Q51_9", "Q51_10", 
+            "Q51_11", "Q51_12", "Q51_13", "Q51_14", "Q51_15", "Q51_16")
+
+
+# Individual factors
+Lambda_3_factor <- matrix(0,46,3)
+Lambda_3_factor[1:20,1] <- 1
+Lambda_3_factor[21:30,2] <- 1
+Lambda_3_factor[31:46,3] <- 1
+```
+
+Second, we define the alpha level and set the seed.
+```{r LNM set alpha, echo=FALSE, message=TRUE, warning=FALSE}
+alpha = 0.01
+set.seed(NULL)
+```
+
+Third, we define the LNMs.
+```{r LNM define model, echo=FALSE, message=TRUE, warning=FALSE}
+# Define models
+lnmMod_3_factor <-  lnm(df_factor, vars=vars_3,  lambda = Lambda_3_factor,  latents = Latents_3_factor, identification = "variance")
+```
+
+Fourth, we run the LNM.
+```{r LNM run model, echo=FALSE, message=TRUE, warning=FALSE}
+# Run & Remove non-sig latent edges:
+lnmMod_3_prune <- lnmMod_3_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
+```
+
+### Results
+Fit measures
+```{r LNM fit, echo=FALSE, message=TRUE, warning=FALSE}
+lnmMod_3_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
+```
+
+Plot
+```{r LNM Plot, echo=FALSE, message=TRUE, warning=FALSE}
+qgraph(lnmMod_3_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_3_factor,
+       theme = "colorblind", vsize = 10)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 8 factor models
+```{r LNM 8 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+# Rename
+# Factor structure
+Latents_8_factor<-c("Re1","Re2", "Av", "Na", "An","Eb","Aa","Da")
+
+# Variables
+vars_8 = c("PCL1", "PCL2", "PCL3","PCL4","PCL5","PCL6","PCL7","PCL8" ,"PCL9",
+        "PCL10","PCL11","PCL12","PCL13","PCL14","PCL15","PCL16","PCL17", "PCL18","PCL19","PCL20")
+
+# Individual factors
+Lambda_8_factor <- matrix(0,20,8)
+Lambda_8_factor[1:3,1] <- 1
+Lambda_8_factor[4:5,2] <- 1
+Lambda_8_factor[6:7,3] <- 1
+Lambda_8_factor[8:11,4] <- 1
+Lambda_8_factor[12:14, 5] <- 1
+Lambda_8_factor[15:16,6] <- 1
+Lambda_8_factor[17:18,7] <- 1
+Lambda_8_factor[19:20,8] <- 1
+```
+
+7 Factor Model
+```{r LNM 7 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+# Factor structure
+Latents_7_factor<-c("Re", "Av", "Na", "An","Eb","Aa","Da")
+
+# Individual factors
+Lambda_7_factor <- matrix(0,20,7)
+Lambda_7_factor[1:5,1] <- 1
+Lambda_7_factor[6:7,2] <- 1
+Lambda_7_factor[8:11,3] <- 1
+Lambda_7_factor[12:14,4] <- 1
+Lambda_7_factor[15:16,5] <- 1
+Lambda_7_factor[17:18,6] <- 1
+Lambda_7_factor[19:20,7] <- 1
+```
+
+4 Factor DSM  Model
+```{r LNM 5 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+# Factor structure
+Latents_4_factor<-c("Re", "Av", "Mood", "Arousal")
+
+# Individual factors
+Lambda_4_factor <- matrix(0,20,4)
+Lambda_4_factor[1:5,1] <- 1
+Lambda_4_factor[6:7,2] <- 1
+Lambda_4_factor[8:14,3] <- 1
+Lambda_4_factor[15:20,4] <- 1
+```
+
+Second, we define the alpha level and set the seed.
+```{r LNM set alpha, echo=FALSE, message=TRUE, warning=FALSE}
+alpha = 0.01
+set.seed(NULL)
+```
+
+Third, we define the LNMs.
+```{r LNM define model, echo=FALSE, message=TRUE, warning=FALSE}
+# Define models
+lnmMod_8_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_8_factor,  latents = Latents_8_factor, identification = "variance")
+lnmMod_7_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_7_factor,  latents = Latents_7_factor, identification = "variance")
+lnmMod_4_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_4_factor,  latents = Latents_4_factor, identification = "variance")
+```
+
+Fourth, we run the LNM.
+```{r LNM run model, echo=FALSE, message=TRUE, warning=FALSE}
+# Run & Remove non-sig latent edges:
+lnmMod_8_prune <- lnmMod_8_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
+lnmMod_7_prune <- lnmMod_7_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
+lnmMod_4_prune <- lnmMod_4_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
+```
+
+### Results
+Fit measures
+```{r LNM fit, echo=FALSE, message=TRUE, warning=FALSE}
+lnmMod_8_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
+lnmMod_7_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
+lnmMod_4_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
+```
+
+Plot
+```{r LNM Plot, echo=FALSE, message=TRUE, warning=FALSE}
+qgraph(lnmMod_8_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_8_factor,
+       theme = "colorblind", vsize = 10)
+qgraph(lnmMod_7_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_7_factor,
+       theme = "colorblind", vsize = 10)
+qgraph(lnmMod_4_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_4_factor,
+       theme = "colorblind", vsize = 10)
+```
+
 
