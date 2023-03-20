@@ -341,13 +341,9 @@ Lambda_4_factor[15:20,4] <- 1
 ```
 
 Second, we define the alpha level and set the seed.
-```{r LNM set alpha, echo=FALSE, message=TRUE, warning=FALSE}
-alpha = 0.01
-set.seed(NULL)
-```
 
 Third, we define the LNMs.
-```{r LNM define model, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM define models, echo=FALSE, message=TRUE, warning=FALSE}
 # Define models
 lnmMod_8_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_8_factor,  latents = Latents_8_factor, identification = "variance")
 lnmMod_7_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_7_factor,  latents = Latents_7_factor, identification = "variance")
@@ -355,23 +351,23 @@ lnmMod_4_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_4_factor,  late
 ```
 
 Fourth, we run the LNM.
-```{r LNM run model, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM run models, echo=FALSE, message=TRUE, warning=FALSE}
 # Run & Remove non-sig latent edges:
 lnmMod_8_prune <- lnmMod_8_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
 lnmMod_7_prune <- lnmMod_7_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
 lnmMod_4_prune <- lnmMod_4_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
 ```
 
-### Results
+# Results
 Fit measures
-```{r LNM fit, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM fit models, echo=FALSE, message=TRUE, warning=FALSE}
 lnmMod_8_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 lnmMod_7_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 lnmMod_4_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 ```
 
 Plot
-```{r LNM Plot, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM Plots, echo=FALSE, message=TRUE, warning=FALSE}
 qgraph(lnmMod_8_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_8_factor,
        theme = "colorblind", vsize = 10)
 qgraph(lnmMod_7_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_7_factor,
@@ -380,4 +376,82 @@ qgraph(lnmMod_4_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_4_factor,
        theme = "colorblind", vsize = 10)
 ```
 
+## Network model of 8-factors and RTQ and ASI
+
+```{r}
+Latents_8_factor_ASI_RTQ<-c("Re1","Re2", "Av", "Na", "An","Eb","Aa","Da", "Rum", "Anx")
+
+# Variables
+vars_all = c("PCL1", "PCL2", "PCL3","PCL4","PCL5","PCL6","PCL7","PCL8" ,"PCL9",
+        "PCL10","PCL11","PCL12","PCL13","PCL14","PCL15","PCL16","PCL17", "PCL18","PCL19","PCL20", 
+        "Q50_1", "Q50_2", "Q50_3", "Q50_4", "Q50_5", "Q50_6", "Q50_7", "Q50_8", "Q50_9", "Q50_10", 
+            "Q51_1", "Q51_2", "Q51_3", "Q51_4", "Q51_5", "Q51_6", "Q51_7", "Q51_8", "Q51_9", "Q51_10", 
+            "Q51_11", "Q51_12", "Q51_13", "Q51_14", "Q51_15", "Q51_16")
+
+# Individual factors
+Lambda_10_factors <- matrix(0,46,10)
+Lambda_10_factors[1:3,1] <- 1
+Lambda_10_factors[4:5,2] <- 1
+Lambda_10_factors[6:7,3] <- 1
+Lambda_10_factors[8:11,4] <- 1
+Lambda_10_factors[12:14, 5] <- 1
+Lambda_10_factors[15:16,6] <- 1
+Lambda_10_factors[17:18,7] <- 1
+Lambda_10_factors[19:20,8] <- 1
+Lambda_10_factors[21:30,9] <- 1
+Lambda_10_factors[31:46,10] <- 1
+```
+
+```{r}
+# define
+lnmMod_10_factor <-  lnm(df_factor, vars=vars_all,  lambda = Lambda_10_factors,  latents = Latents_8_factor_ASI_RTQ, identification = "variance")
+
+```
+
+Prune and test
+```{r}
+lnmMod_10_prune <- lnmMod_10_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
+
+qgraph(lnmMod_10_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_8_factor_ASI_RTQ,
+       theme = "colorblind", vsize = 10)
+
+lnmMod_10_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
+
+```
+
+
+Due to lack of power we will evaluate based on total score of each cluster
+
+### Total score evaluation - using simple network analysis
+- Not latent models
+
+```{r}
+# build cluster scores
+df3 <- df_factor %>% mutate(
+  RE1 = PCL1 + PCL2 + PCL3,
+  RE2 = PCL4 + PCL5,
+  Av = PCL6 + PCL7,
+  Na = PCL8 + PCL9 + PCL10 + PCL11,
+  An = PCL12 + PCL13 + PCL14,
+  Eb = PCL15 + PCL16,
+  Aa = PCL17 + PCL18,
+  Da = PCL19 + PCL20,
+
+)
+
+# bootnet
+
+df4 <- df3 %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalGAD) 
+
+net <- estimateNetwork(df4[,2:11], "ggmModSelect")
+plot(net)
+```
+
+Now with ASI:
+
+```{r}
+df5 <- df3 %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalASI)
+netASI <-  estimateNetwork(df5[,2:11],default = "ggmModSelect") 
+plot(netASI)
+```
 
