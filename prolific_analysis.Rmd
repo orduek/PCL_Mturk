@@ -13,7 +13,7 @@ output:
 ```{r, results='hide',  message=FALSE, warning=FALSE, include=FALSE}
 # load libraries
 require(tidyverse)
-require(dplyr)
+#require(dplyr)
 require(ggplot2)
 require(bootnet)
 require(qgraph)
@@ -53,7 +53,8 @@ df <- df %>% mutate (
 ggplot(df, aes(x=age)) + geom_histogram(bins=10, fill = 'lightblue') +theme_minimal() + ggtitle("Age Histogram (Before omitting")
 
 # Education
-df %>%  select(Q32) %>% mutate(Q32 = factor(Q32, levels=c(1:6), labels = c("1","2","3","4", "5","6"))) %>%
+df %>%  select(Q32) %>% mutate(Q32 = factor(Q32, levels=c(1:7), labels = c("lessHighSchool","HighSchool_GED","College_nodegree",
+                                                                           "technical_degree", "BA","MA/PhD", "Prefer_not"))) %>%
   tbl_summary(label = list(Q32 ~ "Education")) # need to add labels
 ```
 
@@ -455,3 +456,29 @@ netASI <-  estimateNetwork(df5[,2:11],default = "ggmModSelect")
 plot(netASI)
 ```
 
+## Seperating those who chose emotional Pain and those who said fearful reaction
+
+### First How many in each group
+
+```{r}
+df %>% mutate(Q47 = factor(Q47, levels=c(1:2), labels = c("Emotional Pain","Fearful Reaction"))) %>% select(Q47)  %>%
+  tbl_summary(label = list(Q47 ~ "Education"))
+  
+
+```
+
+### Emotional Pain
+```{r}
+# emotional pain first
+df6 <- df3 %>% filter(Q47==1) %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalGAD)
+net_Em_Pain <-  estimateNetwork(df6[,2:11],default = "ggmModSelect") 
+plot(net_Em_Pain)
+```
+
+### Fearful Reaction
+```{r}
+# emotional pain first
+df7 <- df3 %>% filter(Q47==2) %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalGAD)
+net_Fear <-  estimateNetwork(df7[,2:11],default = "ggmModSelect") 
+plot(net_Fear)
+```
