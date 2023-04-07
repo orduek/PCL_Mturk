@@ -1,5 +1,5 @@
 ---
-title: "Questionnaire Analysis"
+title: "Analysis of Prolific Data for B & I"
 author: "Or Duek & Tobias R. Spiller"
 output:
   html_document:
@@ -8,99 +8,129 @@ output:
     toc_float: yes
 
 ---
+# Introduction & Basic Analysis
 
+The following code performs basic data analysis of a questionnaire dataset collected through the Prolific platform. The dataset includes demographic information as well as responses to various psychological measures, including the Posttraumatic Stress Disorder Checklist for DSM-5 (PCL-5), the Revised Trauma Questionnaire (RTQ), the Patient Health Questionnaire (PHQ), the Generalized Anxiety Disorder scale (GAD), and the Anxiety Sensitivity Index (ASI). The code explores the demographic characteristics of the sample, the quality of the data (attention checks), and the relationship between different measures using network and exploratory factor analysis.
 
-```{r, results='hide',  message=FALSE, warning=FALSE, include=FALSE}
-# load libraries
-require(tidyverse)
+## Libraries and Data Reading
+
+The first part of the code loads necessary libraries and reads the CSV file with the dataset.
+```{r Load libraries, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+# data handling
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+
+# Basic analysis
 library(psych)
-require(ggplot2)
-require(bootnet)
-require(qgraph)
-require(psychonetrics)
+library(qgraph)
 library(cluster)
+library(factoextra)
 
+#Networks
+library(bootnet)
+library(qgraph)
+library(psychonetrics)
 
 # map
-require(sf)
-require(mapview)
+library(sf)
+#require(mapview)
 
 # tables
-require(gtsummary)
-
-# xls
-library(readxl)
+library(gtsummary)
 ```
 
-# Analysing Prolific Data
-
-```{r}
+```{r import data, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
 # read data
-df <- read.csv('Prolific_trauma-exp_only_PCL-V_Randomization.csv', na.strings=c("","NA"))
+df <- read.csv("Prolific_trauma-exp_only_PCL-V_Randomization.csv",
+               na.strings=c("","NA"))
 ```
 
-# Basic Demographics
-Age and Sex
-```{r}
-#
-df %>%  select(Q34) %>% mutate(Q34 = factor(Q34, levels=c(1:4), labels = c("Male","Female","Non-Binary/Other","Prefer Not to say"))) %>%
-  tbl_summary(label = list(Q34 ~ "Sex")) # need to add labels
+## Basic Demographics
 
-# age is not clean, need to go over, if not numeric then set as NA
-df <- df %>% mutate (
-  age = as.numeric(df$Q33)
-)
-
-ggplot(df, aes(x=age)) + geom_histogram(bins=10, fill = 'lightblue') +theme_minimal() + ggtitle("Age Histogram (Before omitting")
-
-# Education
-df %>%  select(Q32) %>% mutate(Q32 = factor(Q32, levels=c(1:7), labels = c("lessHighSchool","HighSchool_GED","College_nodegree",
-                                                                           "technical_degree", "BA","MA/PhD", "Prefer_not"))) %>%
-  tbl_summary(label = list(Q32 ~ "Education")) # need to add labels
+The next part of the code explores the basic demographics of the sample, including age, sex, and education level. Age is plotted as a histogram, while sex and education level are summarized using the tbl_summary function from the gtsummary package.
+```{r rename, echo=FALSE}
+# Rename variables and convert variable types
+df <- df %>% 
+  rename(
+    sex = Q34,
+    education = Q32,
+    age = Q33,
+    dich = Q47,
+    fear = Q39_1,
+    pain = Q40_1) %>%
+  mutate(
+    sex = factor(sex, levels = 1:4, labels = c("Male", "Female", "Non-Binary/Other", "Prefer Not to say")),
+    education = factor(education, levels = 1:7, labels = c(
+      "lessHighSchool", "HighSchool_GED", "College_nodegree",
+      "technical_degree", "BA", "MA/PhD", "Prefer_not")),
+    fear = as.numeric(fear),
+    pain = as.numeric(pain),
+    dich = factor(dich))
 ```
 
-# Location of responders
-```{r}
-df %>%  drop_na(LocationLongitude) %>% mapview(xcol = "LocationLongitude", ycol = "LocationLatitude", crs = 4269,  grid = F)
+```{r summary, echo=FALSE}
+# Summarize sex and education
+tbl_summary(df %>% select(sex), label = list(sex = "Sex"))
+tbl_summary(df %>% select(education), label = list(education = "Education"))
+
+# Plot age
+ggplot(df, aes(x = age)) + 
+  geom_histogram(bins = 10, fill = 'lightblue') +
+  theme_minimal() +
+  ggtitle("Age Histogram")
+  ggtitle("Age Histogram")
 ```
 
-# Attention Checks
+## Location of Responders
+
+The code uses the mapview package to visualize the location of responders on a map. [disabled as I (Tobias) cannot install the package]
+```{r eval=FALSE, include=FALSE}
+df %>%
+  drop_na(LocationLongitude) %>% 
+  mapview(xcol = "LocationLongitude", ycol = "LocationLatitude", crs = 4269,  grid = F)
+```
+
+## Attention Checks
+
+The code checks the quality of the data by examining the responses to attention checks. The results are summarized using the tbl_summary function from the gtsummary package. Only *one* person failed attention check
+
 Let's see how many failed the attention check
 - Asking about Moon and Earth
 - Asking about colors (say all)
 - Asking about No. of traumas (say 5)
-
 ```{r}
-
-df %>% select(Q65) %>% drop_na()  %>% tbl_summary()
-
+df %>% 
+  select(Q65) %>% 
+  drop_na()  %>% 
+  tbl_summary()
 ```
-Only one person failed attention check
 
+## Sanity Check
 
-# Sanity 
-Lets just grab the dichotomous question (which is more central emotional pain or fear), and see if it correlates with the manual scale
+The code performs a sanity check by examining the relationship between a dichotomous question about central emotional pain or fear and a manual scale that measures emotional pain and fear. The results are visualized using boxplots and a linear regression model.
 ```{r}
-# 40  -dicho (1=pain, 2=fear), 67 - trauma reminder, 68 - emotional pain
+# Rename columns and convert variable types
+# Plot emotional pain and fear as a factor of the dichotomous question
+ggplot(df, aes(x=dich, y=pain, group = dich)) + 
+  geom_boxplot() + 
+  theme_minimal() + 
+  ggtitle("Emotional pain as factor of the Dichotomous question")
 
-df2 <- df %>% select(Q47, Q39_1, Q40_1)#$[2:nrow(df),c(9,40, 67, 68)]
-# changing column names
-colnames(df2)[1] = "dich"
-colnames(df2)[2] = "fear"
-colnames(df2)[3] = "pain"
-df2$dich <- factor(df2$dich)
-summary(df2)
-df2 <- drop_na(df2) # 44 subjects
+ggplot(df, aes(x=dich, y=fear, group = dich)) + 
+  geom_boxplot() + 
+  theme_minimal() + 
+  ggtitle("Fear as factor of the Dichotomous question")
 
-ggplot(df2, aes(x=dich, y=pain, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Emotional pain as factor of the Dichotomous question")
-
-ggplot(df2, aes(x=dich, y=fear, group = dich)) + geom_boxplot() + theme_minimal() + ggtitle("Fear as factor of the Dichotomous question")
-summary(lm(fear ~ dich, data=df2))
+# Summary of linear regression model
+summary(lm(fear ~ dich, data=df))
 ```
 
 ## Calculate Total Scores
-```{r}
-df_2 <- df %>% 
+
+The code calculates total scores for each psychological measure by summing the item scores for each measure. 
+```{r include=FALSE}
+df3 <- df %>% 
   slice(-1) %>%
   mutate(across(Q2:Q21, as.numeric),
          across(Q50_1:Q50_10, as.numeric),
@@ -113,76 +143,89 @@ df_2 <- df %>%
          totalPHQ = sum(Q37_1, Q37_2, Q37_3, Q37_4, Q37_5, Q37_6, Q37_7, Q37_8, Q37_9),
          totalGAD = sum(Q38_1, Q38_2, Q38_3, Q38_4, Q38_5, Q38_6, Q38_7),
          totalASI = sum(Q51_1, Q51_2, Q51_3, Q51_4, Q51_5, Q51_6, Q51_7, Q51_8, Q51_9, Q51_10, Q51_11, Q51_12, Q51_13, Q51_14, Q51_15, Q51_16))
- 
 
-hist(df_2$totalPCL)
-hist(df_2$totalRTQ)
-hist(df_2$totalPHQ)
-hist(df_2$totalGAD)
-hist(df_2$totalASI)
-
+df3 <- df3 %>% 
+  ungroup
 ```
+
+Histograms are used to visualize the distributions of the total scores for each measure.
+```{r echo=FALSE}
+# Plot histograms of total scores for each measure
+hist(df3$totalPCL, main = "Total PCL Score Distribution")
+hist(df3$totalRTQ, main = "Total RTQ Score Distribution")
+hist(df3$totalPHQ, main = "Total PHQ Score Distribution")
+hist(df3$totalGAD, main = "Total GAD Score Distribution")
+hist(df3$totalASI, main = "Total ASI Score Distribution")
+```
+
+## Correlation Analysis
+
+The code examines the relationships between different psychological measures using scatterplots and correlation tests. The results are visualized using ggplot2 and tested using the cor.test function.
 
 ### Test histogram of RTQ within different cutoffs of PCL
 ```{r}
+df_highP <- df3 %>% filter(totalPCL >= 28)
+df_lowP <- df3 %>% filter(totalPCL < 28)
 
-df_highP <- df_2 %>% filter(totalPCL>=28)
-df_lowP <- df_2 %>% filter(totalPCL<28)
-
-par(mfrow=c(2,1))
- 
 #Make the plot
-par(mar=c(2,5,1,2))
-hist(df_highP$totalRTQ , main="" , ylab="Frequency for high PCL", xlab="", xaxt="n", ylim=c(0,100), las=1 , col="slateblue1", breaks=10)
-hist(df_lowP$totalRTQ, main="", ylab="Frequency for low PCL", xlab="RTQ-10 Score", ylim=c(100,0),las=1 , col="tomato3"  , breaks=10)
-
+ggplot() +
+  geom_histogram(data = df_highP, aes(x = totalRTQ), binwidth = 2, color = "black", fill = "slateblue1", alpha = 0.7) +
+  geom_histogram(data = df_lowP, aes(x = totalRTQ), binwidth = 2, color = "black", fill = "tomato3", alpha = 0.7) +
+  labs(x = "", y = "Frequency", title = "Histogram of RTQ within different cutoffs of PCL") +
+  scale_y_continuous(limits = c(0, 100)) +
+  theme_minimal()
 ```
 
 ### Correlation between RTQ and PCL
-```{r}
-df_2 <- df_2 %>% mutate(
-  pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
-                      totalPCL<28 ~ "LowPCL")
-)
-df_2 %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalPCL)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+```{r warning=FALSE}
+df3 %>%
+  ggplot(aes(x = totalRTQ, y = totalPCL, color = factor(ifelse(totalPCL >= 28, "HighPCL", "LowPCL")))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Correlation between RTQ and PCL") +
+  theme_minimal()
 
-cor.test(df_2$totalPCL, df_2$totalRTQ)
+cor.test(df3$totalPCL, df3$totalRTQ)
 ```
 
 ### Correlation between PCL and GAD
-```{r}
-df_2 <- df_2 %>% mutate(
-  pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
-                      totalPCL<28 ~ "LowPCL")
-)
-df_2 %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalGAD)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+```{r warning=FALSE}
+df3 %>%
+  ggplot(aes(x = totalGAD, y = totalPCL, color = factor(ifelse(totalPCL >= 28, "HighPCL", "LowPCL")))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Correlation between PCL and GAD") +
+  theme_minimal()
 
-cor.test(df_2$totalPCL, df_2$totalGAD)
+cor.test(df3$totalPCL, df3$totalGAD)
 ```
 
 ### Correlation between PCL and ASI
-```{r}
-df_2 <- df_2 %>% mutate(
-  pcl_H_L = case_when(totalPCL>=28 ~ "HighPCL",
-                      totalPCL<28 ~ "LowPCL")
-)
-df_2 %>% drop_na(totalPCL) %>% ggplot(aes(x=totalRTQ, y=totalASI)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
+```{r warning=FALSE}
+df3 %>%
+  ggplot(aes(x = totalASI, y = totalPCL, color = factor(ifelse(totalPCL >= 28, "HighPCL", "LowPCL")))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Correlation between PCL and ASI") +
+  theme_minimal()
 
-cor.test(df_2$totalPCL, df_2$totalASI)
+cor.test(df3$totalPCL, df3$totalASI)
 ```
 
 ### Correlation between RTQ and ASI
-```{r}
-df_2 %>% ggplot(aes(x=totalRTQ, y=totalASI)) + geom_point(aes(color=pcl_H_L)) + geom_smooth(method='lm') + theme_minimal()
-
-cor.test(df_2$totalRTQ, df_2$totalASI)
+```{r warning=FALSE}
+df3 %>%
+  ggplot(aes(x = totalASI, y = totalRTQ, color = factor(ifelse(totalPCL >= 28, "HighPCL", "LowPCL")))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Correlation between PCL and RTQ") +
+  theme_minimal()
 ```
 
 
-
-## OLD LNM ANALYSIS
-```{r LNM rename, echo=FALSE, message=TRUE, warning=FALSE}
-df_factor <- df_2 %>% 
+# OLD LNM ANALYSIS - NOT RUN - COULD BE DELETED 
+```{r LNM rename, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
+df_factor <- df3 %>% 
     rename(PCL1 = Q2,
          PCL2 = Q3,
          PCL3 = Q4,
@@ -207,7 +250,7 @@ df_factor <- df_2 %>%
 ```
 
 
-```{r LNM 3 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM 3 Factor, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Rename
 # Factor structure
 Latents_3_factor<-c("PCL","RTQ", "ASI")
@@ -228,38 +271,38 @@ Lambda_3_factor[31:46,3] <- 1
 ```
 
 Second, we define the alpha level and set the seed.
-```{r LNM set alpha, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM set alpha, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 alpha = 0.01
 set.seed(NULL)
 ```
 
 Third, we define the LNMs.
-```{r LNM define model, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM define model, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Define models
 lnmMod_3_factor <-  lnm(df_factor, vars=vars_3,  lambda = Lambda_3_factor,  latents = Latents_3_factor, identification = "variance")
 ```
 
 Fourth, we run the LNM.
-```{r LNM run model, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM run model, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Run & Remove non-sig latent edges:
 lnmMod_3_prune <- lnmMod_3_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
 ```
 
 Results
 Fit measures
-```{r LNM fit, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM fit, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 lnmMod_3_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 ```
 
 Plot
-```{r LNM Plot, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM Plot, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 qgraph(lnmMod_3_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_3_factor,
        theme = "colorblind", vsize = 10)
 ```
 
 
  8 factor models
-```{r LNM 8 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM 8 Factor, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Rename
 # Factor structure
 Latents_8_factor<-c("Re1","Re2", "Av", "Na", "An","Eb","Aa","Da")
@@ -281,7 +324,7 @@ Lambda_8_factor[19:20,8] <- 1
 ```
 
 7 Factor Model
-```{r LNM 7 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM 7 Factor, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Factor structure
 Latents_7_factor<-c("Re", "Av", "Na", "An","Eb","Aa","Da")
 
@@ -297,7 +340,7 @@ Lambda_7_factor[19:20,7] <- 1
 ```
 
 4 Factor DSM  Model
-```{r LNM 5 Factor, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM 5 Factor, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Factor structure
 Latents_4_factor<-c("Re", "Av", "Mood", "Arousal")
 
@@ -312,7 +355,7 @@ Lambda_4_factor[15:20,4] <- 1
 Second, we define the alpha level and set the seed.
 
 Third, we define the LNMs.
-```{r LNM define models, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM define models, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Define models
 lnmMod_8_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_8_factor,  latents = Latents_8_factor, identification = "variance")
 lnmMod_7_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_7_factor,  latents = Latents_7_factor, identification = "variance")
@@ -320,7 +363,7 @@ lnmMod_4_factor <-  lnm(df_factor, vars=vars_8,  lambda = Lambda_4_factor,  late
 ```
 
 Fourth, we run the LNM.
-```{r LNM run models, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM run models, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # Run & Remove non-sig latent edges:
 lnmMod_8_prune <- lnmMod_8_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
 lnmMod_7_prune <- lnmMod_7_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
@@ -329,14 +372,14 @@ lnmMod_4_prune <- lnmMod_4_factor %>% runmodel %>% psychonetrics::prune(alpha = 
 
 
 Fit measures
-```{r LNM fit models, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM fit models, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 lnmMod_8_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 lnmMod_7_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 lnmMod_4_prune@fitmeasures[c("chisq","pvalue","df", "rmsea","cfi", "tli", "aic.ll", "bic")]
 ```
 
 Plot
-```{r LNM Plots, echo=FALSE, message=TRUE, warning=FALSE}
+```{r LNM Plots, eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 qgraph(lnmMod_8_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_8_factor,
        theme = "colorblind", vsize = 10)
 qgraph(lnmMod_7_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_7_factor,
@@ -350,7 +393,7 @@ qgraph(lnmMod_4_prune@modelmatrices[[1]]$omega_zeta, labels = Latents_4_factor,
 
 ### Total score evaluation - using simple network analysis
 - Not latent models
-```{r}
+```{r eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # build cluster scores
 df3 <- df_factor %>% mutate(
   RE1 = PCL1 + PCL2 + PCL3,
@@ -374,7 +417,7 @@ plot(net)
 
 Now with ASI:
 
-```{r}
+```{r eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 df5 <- df3 %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalASI)
 netASI <-  estimateNetwork(df5[,2:11],default = "ggmModSelect") 
 plot(netASI)
@@ -382,26 +425,32 @@ plot(netASI)
 
 ## Seperating those who chose emotional Pain and those who said fearful reaction
 First, how many in each group
-```{r}
+```{r eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 df %>% mutate(Q47 = factor(Q47, levels=c(1:2), labels = c("Emotional Pain","Fearful Reaction"))) %>% select(Q47)  %>%
   tbl_summary(label = list(Q47 ~ "Education"))
   
 
 ```
 ### Emotional Pain
-```{r}
+```{r eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # emotional pain first
 df6 <- df3 %>% filter(Q47==1) %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalGAD)
 net_Em_Pain <-  estimateNetwork(df6[,2:11],default = "ggmModSelect") 
 plot(net_Em_Pain)
 ```
 ### Fearful Reaction
-```{r}
+```{r eval=FALSE, message=TRUE, warning=FALSE, include=FALSE}
 # emotional pain first
 df7 <- df3 %>% filter(Q47==2) %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, totalRTQ, totalGAD)
 net_Fear <-  estimateNetwork(df7[,2:11],default = "ggmModSelect") 
 plot(net_Fear)
 ```
+
+
+
+
+
+
 
 
 
@@ -415,10 +464,9 @@ Q42 Having strong negative feelings such as fear or horror?
 Q43 Having strong negative feelings such as guilt, or shame?	
 Q44 Having strong negative feelings of anger?
 
-Select new items
+Select new items related to emotions and some relevant columns,convert all columns to numeric type and remove rows with NA values
 ```{r}
-df_extra <- df_2 %>% 
-  ungroup %>% 
+df4 <- df3 %>% 
   dplyr::select(Q42:Q44,
                 Q2:Q21, #PCL
                 Q37_1:Q37_9, #PHQ
@@ -431,14 +479,14 @@ df_extra <- df_2 %>%
 
 Assess the correlation between the different emotions
 ```{r}
-df_extra_4 <- df_extra %>% 
+df5 <- df4 %>% 
   dplyr::select(Q42:Q44)
 
-cor_matrix <- cor(df_extra_4)
+cor_matrix <- cor(df5)
 round(cor_matrix, 2)
 
 # Create a data frame from the matrix
-df_plot <- as.data.frame(df_extra_4)
+df_plot <- as.data.frame(df5)
 
 # Create a jitter plot matrix with correlation line
 ggplot(df_plot, aes(x = Q42, y = Q43)) + 
@@ -461,24 +509,25 @@ ggplot(df_plot, aes(x = Q43, y = Q44)) +
 ```
 
 ### 1.1 PTSD Internal structre
-How do emotion items relate to the other PTSD items? 
+Analyze the relationship between the new emotion items and the other PTSD items using correlation and network analysis.
+
 Correlation Analysis
 ```{r}
-df_extra_2 <- df_extra %>%   
+df6 <- df4 %>%   
   select(Q2:Q21, Q42, Q43, Q44) 
 
-cor_matrix <- cor(df_extra_2, use = "pairwise.complete.obs")
+cor_matrix <- cor(df6, use = "pairwise.complete.obs")
 print(cor_matrix, digits = 2)
 ```
+
 Network Analysis
-```{r}
-net_PCL_new_items <- estimateNetwork(df_extra_2, "ggmModSelect")
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+net_PCL_new_items <- estimateNetwork(df6, "ggmModSelect")
 plot(net_PCL_new_items, layout = "circle")
 ```
 
-Exploratory Factor analysis assuming a 4 factor structure
-- the new items separate nicely
-- Replicate DSM-5 model (more or less)
+Exploratory Factor (EFA)
+Assess whether the new emotion items align with the DSM-5 model by conducting EFA assuming a 4 factor structure.
 ```{r}
 # Perform EFA using principal axis factoring (PAF) with oblimin rotation
 efa_result <- fa(cor_matrix, nfactors = 4, rotate = "oblimin", fm = "pa", 
@@ -487,6 +536,9 @@ efa_result <- fa(cor_matrix, nfactors = 4, rotate = "oblimin", fm = "pa",
 # Print the factor loadings
 print(efa_result$loadings, digits = 2, cutoff = 0.4)
 ```
+
+
+
 
 Assess how the are related to the 8-factor model [not run because it exceeds running time]
 ```{r eval=FALSE, include=FALSE}
@@ -512,7 +564,7 @@ Lambda_10_factors[22,10] <- 1
 Lambda_10_factors[23,11] <- 1
 
 # Run
-lnmMod_10_factor <-  lnm(df_extra_2, vars=vars_all,  lambda = Lambda_10_factors,  latents = Latents_8_factor_new_items, identification = "variance")
+lnmMod_10_factor <-  lnm(df6, vars=vars_all,  lambda = Lambda_10_factors,  latents = Latents_8_factor_new_items, identification = "variance")
 
 # Prune
 lnmMod_10_prune <- lnmMod_10_factor %>% runmodel %>% psychonetrics::prune(alpha = alpha) 
@@ -529,83 +581,81 @@ Using ordinary networks
 - need to update the code
 ```{r}
 # build factors scores
-df_extra_NW <- df_factor %>% 
+df4_NW <- df4 %>% 
   mutate(
-  RE1 = PCL1 + PCL2 + PCL3,
-  RE2 = PCL4 + PCL5,
-  Av = PCL6 + PCL7,
-  Na = PCL8 + PCL9 + PCL10 + PCL11,
-  An = PCL12 + PCL13 + PCL14,
-  Eb = PCL15 + PCL16,
-  Aa = PCL17 + PCL18,
-  Da = PCL19 + PCL20) %>% 
-  ungroup() %>% 
-  mutate_all(as.numeric)
+    RE1 = Q2 + Q3 + Q4,
+    RE2 = Q5 + Q6,
+    Av = Q7 + Q8,
+    Na = Q9 + Q10 + Q11 + Q12,
+    An = Q13 + Q14 + Q15,
+    Eb = Q16 + Q17,
+    Aa = Q18 + Q19,
+    Da = Q20 + Q21) %>% 
+  select(RE1, RE2, Av, Na, An, Eb, Aa, Da, Q42, Q43, Q44)
 
-# bootnet
-df_extra_NW_1 <- df_extra_NW %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, Q42, Q43, Q44)  %>% 
-  drop_na()
-
-net <- estimateNetwork(df_extra_NW_1, "ggmModSelect")
+# Estimate network
+net <- estimateNetwork(df4_NW, "ggmModSelect")
 plot(net, layout = "circle")
-
 ```
-
 
 ## 1.2. EXTERNAL
 Full data matrix for the emotions and the scale total scores
 ```{r}
-df_extra_5 <- df_extra %>% 
+df7 <- df4 %>% 
   dplyr::select(Q42:Q44, totalPCL, totalPHQ, totalGAD, totalASI, totalRTQ)
 
-cor_matrix <- cor(df_extra_5)
+cor_matrix <- cor(df7)
 round(cor_matrix, 2)
 ```
 
 
 Adjusting for PTSD overall
-1. Rumination
+Linear regression models are created to assess the association between each emotion item and the four scale total scores while adjusting for PTSD overall (measured by totalPCL). The lm function is used to fit the models, and the summary function is used to print the model summary.
+
+1. Rumination - RTQ
 ```{r}
-model <- lm(totalRTQ ~ totalPCL + Q42 +Q43 +Q44, data = df_extra_5)
+model_rtq <- lm(totalRTQ ~ totalPCL + Q42 + Q43 + Q44, data = df7)
 
 # Print the model summary
-summary(model)
+summary(model_rtq)
 ```
 
 2. Anxiety - ASI
 ```{r}
-model <- lm(totalASI ~ totalPCL + Q42 +Q43 +Q44, data = df_extra_5)
+model_asi <- lm(totalASI ~ totalPCL + Q42 + Q43 + Q44, data = df7)
 
 # Print the model summary
-summary(model)
+summary(model_asi)
 ```
 
 3. Anxiety - GAD
 ```{r}
-model <- lm(totalGAD ~ totalPCL + Q42 +Q43 +Q44, data = df_extra_5)
+model_gad <- lm(totalGAD ~ totalPCL + Q42 + Q43 + Q44, data = df7)
 
 # Print the model summary
-summary(model)
+summary(model_gad)
 ```
 
 4. Depression - PHQ
 ```{r}
-model <- lm(totalPHQ ~ totalPCL + Q42 +Q43 +Q44, data = df_extra_5)
+model_phq <- lm(totalPHQ ~ totalPCL + Q42 + Q43 + Q44, data = df7)
 
 # Print the model summary
-summary(model)
+summary(model_phq)
 ```
 
-```{r}
 
-# bootnet
-df_extra_NW_3 <- df_extra_5 %>%   
+## Network annalysis
+To estimate the network, the provided code selects the relevant variables using the select function, estimates the network using the estimateNetwork function, and plots the network using the plot function with a circular layout.
+```{r}
+df8 <- df7 %>%   
   select(totalPCL, totalPHQ, totalGAD, totalASI, totalRTQ, Q42, Q43, Q44) 
 
-net <- estimateNetwork(df_extra_NW_3, "ggmModSelect")
+net <- estimateNetwork(df8, "ggmModSelect")
 plot(net, layout = "circle")
 
 ```
+
 
 
 ### 2. INDIVIDUALS
@@ -613,44 +663,25 @@ plot(net, layout = "circle")
 #### Categorical
 Calculate how many individuals report high (>=2 on a 0-4 scale) fear, shame, and anger
 ```{r}
-df_extra_2 <- df_extra %>% 
-  ungroup() %>% 
-  dplyr::select(-ResponseId) %>% 
-  mutate_all(as.numeric)
-
-# Calculate median and quartiles of Q42, Q43, and Q44
-df_extra_2 %>%
-  dplyr::select(Q42:Q44) %>% 
-  summarise_at(vars(Q42:Q44), list(median = median, q25 = quantile, q75 = quantile), probs = c(0.25, 0.75)) %>%
-  print()
-
-# Create new variables indicating low or high scores for Q42, Q43, and Q44
-df_extra_2 <- df_extra_2 %>%
+df6 <- df4 %>% 
+  select(Q42:Q44) %>% 
+  mutate(across(.cols = everything(), as.numeric)) %>% 
   mutate(Q42_low_high = ifelse(Q42 < 3, "low", "high"),
          Q43_low_high = ifelse(Q43 < 3, "low", "high"),
          Q44_low_high = ifelse(Q44 < 3, "low", "high"))
 
-# Reshape the data
-df_gather <- df_extra_2 %>%
+df_summary <- df6 %>%
   select(Q42_low_high, Q43_low_high, Q44_low_high) %>%
-  gather() %>%
-  mutate(variable = sub("_low_high", "", key))
-
-# Calculate the summary statistics
-df_summary <- df_gather %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") %>%
   group_by(variable, value) %>%
-  summarise(n = n(), percentage = n()/nrow(df_extra)*100)
-
-# Print the summary statistics
-print(df_summary)
+  summarise(n = n(), percentage = n()/nrow(df4)*100)
 ```
 The distribution is not even. More individuals report high shame than fear or anger. 
-
 
 Next, we test how many individuals with high fear report high/low shame or high/low anger. We do this for all three emotions.
 ```{r}
 # Calculate the number and percentage of individuals who are high or low on other variables within the Q42 high and low subsets
-df_extra_2 %>%
+df6 %>%
   group_by(Q42_low_high) %>%
   summarise(Q43_high = sum(Q43 >= 3),
             Q43_low = sum(Q43 < 3),
@@ -662,7 +693,7 @@ df_extra_2 %>%
             percentage_Q44_low = Q44_low/n()*100) %>%
   print()
 
-df_extra_2 %>%
+df6 %>%
   group_by(Q43_low_high) %>%
   summarise(Q42_high = sum(Q42 >= 3),
             Q42_low = sum(Q42 < 3),
@@ -675,7 +706,7 @@ df_extra_2 %>%
   print()
 
 
-df_extra_2 %>%
+df6 %>%
   group_by(Q44_low_high) %>%
   summarise(Q42_high = sum(Q42 >= 3),
             Q42_low = sum(Q42 < 3),
@@ -692,27 +723,20 @@ There are relevant differences between individuals with high fear or high shame.
 Next, we want to assess, whether individuals who have predomninately fear vs shame do report differences in their levels of psychopathology (i.e., can we separate two subgroups based on fear vs shame).
 ```{r}
 # Add a variable indicating two groups based on Q42 and Q43
-df_extra_2 <- df_extra_2 %>%
+df9 <- df4 %>%
+  mutate(Q42_low_high = ifelse(Q42 < 3, "low", "high"),
+         Q43_low_high = ifelse(Q43 < 3, "low", "high"),
+         Q44_low_high = ifelse(Q44 < 3, "low", "high")) %>% 
   mutate(Q42_Q43_group = ifelse(Q42_low_high == "high" & Q43_low_high == "low", "Q42_high_Q43_low",
                                 ifelse(Q42_low_high == "low" & Q43_low_high == "high", "Q42_low_Q43_high", NA)))
 
 # Summarize the mean and standard deviation (or median) of totalPCL, totalPHQ, totalGAD, totalASI, and totalRTQ by Q42_Q43_group
-df_extra_2 %>%
+df9 %>%
   group_by(Q42_Q43_group) %>%
-  summarise(mean_totalPCL = mean(totalPCL),
-            sd_totalPCL = sd(totalPCL),
-            median_totalPCL = median(totalPCL),
-            mean_totalPHQ = mean(totalPHQ),
-            sd_totalPHQ = sd(totalPHQ),
+  summarise(median_totalPCL = median(totalPCL),
             median_totalPHQ = median(totalPHQ),
-            mean_totalGAD = mean(totalGAD),
-            sd_totalGAD = sd(totalGAD),
             median_totalGAD = median(totalGAD),
-            mean_totalASI = mean(totalASI),
-            sd_totalASI = sd(totalASI),
             median_totalASI = median(totalASI),
-            mean_totalRTQ = mean(totalRTQ),
-            sd_totalRTQ = sd(totalRTQ),
             median_totalRTQ = median(totalRTQ))
 ```
 There are no relevant differences.
@@ -720,11 +744,8 @@ There are no relevant differences.
 ### Cluster Analysis
 We use cluster analysis to check for subgroups. We define three clusters (due to three emotions). First, we use the three emotions and all relevant constructs (PCL, RTW, GAD, ASI, PHQ)
 ```{r}
-# Load the necessary packages
-library(psych)
-
 # Select the relevant columns from the dataframe
-df_subset <- df_extra_factor
+df_subset <- df7
 
 # Use hierarchical clustering to determine the number of clusters
 fviz_nbclust(df_subset, hcut, method = "wss", k.max = 10)
@@ -736,7 +757,7 @@ cluster_result <- kmeans(df_subset, centers = 3)
 print(cluster_result$centers)
 
 # Add cluster assignments to the original dataframe
-df_clusters <- df_extra_factor %>%
+df_clusters <- df7 %>%
   mutate(cluster = cluster_result$cluster)
 
 # Summarize the cluster assignments by variable
@@ -750,23 +771,21 @@ The separation is along severity and not different symptoms/psychopathologies.
 Focusing on PTSD only.
 ```{r}
 # Select the relevant columns from the dataframe
-df_subset <- df_extra %>% 
+df_subset_2 <- df7 %>% 
   dplyr::select(totalPCL, Q42,Q43, Q44) %>% 
-  filter(totalPCL >= 33) %>% 
-  ungroup() %>% 
-  mutate_all(as.numeric)
+  filter(totalPCL >= 33)
 
 # Check for missing values
-sum(is.na(df_subset))
+sum(is.na(df_subset_2))
 
 # Standardize the data
-df_subset_std <- scale(df_subset)
+df_subset_std <- scale(df_subset_2)
 
 # Perform clustering using CLARA algorithm
 clara_result <- clara(df_subset_std, k = 3, metric = "euclidean", samples = 10)
 
 # Add cluster assignments to the original dataframe
-df_clusters <- df_subset %>%
+df_clusters <- df_subset_2 %>%
   mutate(cluster = clara_result$clustering)
 
 # Summarize the cluster assignments by variable
