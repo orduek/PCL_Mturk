@@ -10,7 +10,7 @@ output:
 ---
 # Introduction & Basic Analysis
 
-The following code performs basic data analysis of a questionnaire dataset collected through the Prolific platform. The dataset includes demographic information as well as responses to various psychological measures, including the Posttraumatic Stress Disorder Checklist for DSM-5 (PCL-5), the Revised Trauma Questionnaire (RTQ), the Patient Health Questionnaire (PHQ), the Generalized Anxiety Disorder scale (GAD), and the Anxiety Sensitivity Index (ASI). The code explores the demographic characteristics of the sample, the quality of the data (attention checks), and the relationship between different measures using network and exploratory factor analysis.
+The following code performs basic d#df_all <- read.csv('PCL-V+Randomization_first_batch_8_17_22.csv', header = F)ata analysis of a questionnaire dataset collected through the Prolific platform. The dataset includes demographic information as well as responses to various psychological measures, including the Posttraumatic Stress Disorder Checklist for DSM-5 (PCL-5), the Revised Trauma Questionnaire (RTQ), the Patient Health Questionnaire (PHQ), the Generalized Anxiety Disorder scale (GAD), and the Anxiety Sensitivity Index (ASI). The code explores the demographic characteristics of the sample, the quality of the data (attention checks), and the relationship between different measures using network and exploratory factor analysis.
 
 ## Libraries and Data Reading
 
@@ -44,6 +44,11 @@ library(gtsummary)
 # read data
 df <- read.csv("Prolific_trauma-exp_only_PCL-V_Randomization.csv",
                na.strings=c("","NA"))
+
+df_open <- read.csv("Prolific _open_to_all_ PCL-V_Randomization.csv",
+               na.strings=c("","NA")) 
+
+df_open <- df_open %>% filter(is.na(trauma_exposure))
 ```
 
 ## Basic Demographics
@@ -66,7 +71,7 @@ df <- df %>%
       "technical_degree", "BA", "MA/PhD", "Prefer_not")),
     fear = as.numeric(fear),
     pain = as.numeric(pain),
-    dich = factor(dich))
+    dich = factor(dich, labels= c("Emotional Pain", "Fearful Reaction")))
 ```
 
 ```{r summary, echo=FALSE}

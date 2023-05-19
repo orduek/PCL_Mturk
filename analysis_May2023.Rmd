@@ -1,0 +1,453 @@
+---
+title: "Questionnaire Analysis"
+author: "Or Duek & Tobias R. Spiller"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+
+---
+
+
+```{r}
+## Use fear/ emotional pain as a scale to network analysis with 8-factors (also with 7 factors)
+## remove item 11 from factors (when adding q42-q44)
+## subgroup of high fear (more affected by fear) --> network analysis of PCL-5 without item 11 and with 42-44.
+## subgroup of emotional pain --> network analysis of PCL-5 without item 11 and with 42-44.
+# load libraries
+require(tidyverse)
+require(dplyr)
+require(ggplot2)
+require(bootnet)
+require(qgraph)
+require(NetworkComparisonTest)
+# map
+require(sf)
+require(mapview)
+
+# tables
+require(gtsummary)
+
+```
+
+```{r import data, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+# read data
+df <- read.csv("Prolific_trauma-exp_only_PCL-V_Randomization.csv",
+               na.strings=c("","NA"))
+
+# loading non exposed data
+df_open <- read.csv("Prolific _open_to_all_ PCL-V_Randomization.csv",
+               na.strings=c("","NA")) 
+# keeping just exosed 
+df_open <- df_open %>% filter(is.na(trauma_exposure))
+```
+
+```{r rename, echo=FALSE}
+# Rename variables and convert variable types
+df <- df %>% 
+  rename(
+    sex = Q34,
+    education = Q32,
+    age = Q33,
+    dich = Q47,
+    fear = Q39_1,
+    pain = Q40_1) %>%
+  mutate(
+    sex = factor(sex, levels = 1:4, labels = c("Male", "Female", "Non-Binary/Other", "Prefer Not to say")),
+    education = factor(education, levels = 1:7, labels = c(
+      "lessHighSchool", "HighSchool_GED", "College_nodegree",
+      "technical_degree", "BA", "MA/PhD", "Prefer_not")),
+    fear = as.numeric(fear),
+    pain = as.numeric(pain),
+    dich = factor(dich, labels= c("Emotional Pain", "Fearful Reaction")))
+
+# do the same to df_open (a different variable numbers)
+df_open <- df_open %>% 
+  rename(
+    sex = Q34,
+    education = Q32,
+    age = Q33,
+    dich = Q47,
+    fear = Q39_1,
+    pain = Q40_1) %>%
+  mutate(
+    sex = factor(sex, levels = 1:4, labels = c("Male", "Female", "Non-Binary/Other", "Prefer Not to say")),
+    education = factor(education, levels = 1:7, labels = c(
+      "lessHighSchool", "HighSchool_GED", "College_nodegree",
+      "technical_degree", "BA", "MA/PhD", "Prefer_not")),
+    fear = as.numeric(fear),
+    pain = as.numeric(pain),
+    dich = factor(dich, labels= c("Emotional Pain", "Fearful Reaction")))
+
+df_open[1,20] <- 32
+df_open$age <- as.numeric(df_open$age)
+```
+
+```{r}
+
+```
+
+
+```{r summary, echo=FALSE}
+# Summarize sex and education across the two datasets
+df %>% select(sex, education, dich) %>% rbind(df_open %>% select(sex, education, dich)) %>% tbl_summary(label= list(sex="Sex", education = "Education",
+                                                                                                                    dich = "Central Element"))
+# Plot age
+df_combined <- df %>% select(ResponseId, age) %>%
+  rbind(df_open %>% select(ResponseId, age))
+
+df_combined %>%
+  ggplot(aes(x = age)) +
+  geom_histogram(bins = 10, fill = 'lightblue') +
+  theme_minimal() +
+  ggtitle("Age Histogram")
+
+```
+
+27% are more centred in fear and the others are more emotional pain
+
+# Network Analysis
+```{r include=FALSE}
+df3 <- df %>% 
+  slice(-1) %>%
+  mutate(across(Q2:Q21, as.numeric),
+         across(Q50_1:Q50_10, as.numeric),
+         across(Q37_1:Q37_9, as.numeric),
+         across(Q38_1:Q38_7, as.numeric),
+         across(Q51_1:Q51_16, as.numeric)) %>% 
+  rowwise(ResponseId) %>%
+  mutate(totalPCL = sum(c(Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21)),
+         totalRTQ = sum(c(Q50_1,Q50_2, Q50_3, Q50_3, Q50_5, Q50_6, Q50_7, Q50_8, Q50_9, Q50_10)),
+         totalPHQ = sum(Q37_1, Q37_2, Q37_3, Q37_4, Q37_5, Q37_6, Q37_7, Q37_8, Q37_9),
+         totalGAD = sum(Q38_1, Q38_2, Q38_3, Q38_4, Q38_5, Q38_6, Q38_7),
+         totalASI = sum(Q51_1, Q51_2, Q51_3, Q51_4, Q51_5, Q51_6, Q51_7, Q51_8, Q51_9, Q51_10, Q51_11, Q51_12, Q51_13, Q51_14, Q51_15, Q51_16))
+
+df3 <- df3 %>% 
+  ungroup
+
+
+
+# the same for df_open
+df3_open <- df_open %>% 
+  slice(-1) %>%
+  mutate(across(c(Q2.1, Q3.1, Q4.1, Q5, Q6.1, Q7.1:Q21), as.numeric),
+         across(Q50_1:Q50_10, as.numeric),
+         across(Q37_1:Q37_9, as.numeric),
+         across(Q38_1:Q38_7, as.numeric),
+         across(Q51_1:Q51_16, as.numeric)) %>% 
+  rowwise(ResponseId) %>%
+  mutate(totalPCL = sum(c(Q2.1, Q3.1, Q4.1, Q5, Q6.1, Q7.1, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21)),
+         totalRTQ = sum(c(Q50_1,Q50_2, Q50_3, Q50_3, Q50_5, Q50_6, Q50_7, Q50_8, Q50_9, Q50_10)),
+         totalPHQ = sum(Q37_1, Q37_2, Q37_3, Q37_4, Q37_5, Q37_6, Q37_7, Q37_8, Q37_9),
+         totalGAD = sum(Q38_1, Q38_2, Q38_3, Q38_4, Q38_5, Q38_6, Q38_7),
+         totalASI = sum(Q51_1, Q51_2, Q51_3, Q51_4, Q51_5, Q51_6, Q51_7, Q51_8, Q51_9, Q51_10, Q51_11, Q51_12, Q51_13, Q51_14, Q51_15, Q51_16))
+
+df3_open <- df3_open %>%  ungroup
+
+# adding 28 cutoff
+df_factor <- df3 %>% filter(totalPCL>28) %>%
+    rename(PCL1 = Q2,
+         PCL2 = Q3,
+         PCL3 = Q4,
+         PCL4 = Q5,
+         PCL5 = Q6,
+         PCL6 = Q7,
+         PCL7 = Q8,
+         PCL8 = Q9,
+         PCL9 = Q10,
+         PCL10 = Q11,
+         PCL11 = Q12,
+         PCL12 = Q13,
+         PCL13 = Q14,
+         PCL14 = Q15,
+         PCL15 = Q16,
+         PCL16 = Q17,
+         PCL17 = Q18,
+         PCL18 = Q19,
+         PCL19 = Q20,
+         PCL20 = Q21)
+
+# the same for df_open
+df_factor_open <- df3_open %>% filter(totalPCL>28) %>%
+    rename(PCL1 = Q2.1,
+         PCL2 = Q3.1,
+         PCL3 = Q4.1,
+         PCL4 = Q5,
+         PCL5 = Q6.1,
+         PCL6 = Q7.1,
+         PCL7 = Q8,
+         PCL8 = Q9,
+         PCL9 = Q10,
+         PCL10 = Q11,
+         PCL11 = Q12,
+         PCL12 = Q13,
+         PCL13 = Q14,
+         PCL14 = Q15,
+         PCL15 = Q16,
+         PCL16 = Q17,
+         PCL17 = Q18,
+         PCL18 = Q19,
+         PCL19 = Q20,
+         PCL20 = Q21)
+
+
+```
+
+```{r eval=TRUE, message=TRUE, warning=FALSE, echo=FALSE}
+# build cluster scores
+df3 <- df_factor %>% mutate(
+  RE1 = PCL1 + PCL2 + PCL3,
+  RE2 = PCL4 + PCL5,
+  Av = PCL6 + PCL7,
+  Na = PCL8 + PCL9 + PCL10 + PCL11,
+  An = PCL12 + PCL13 + PCL14,
+  Eb = PCL15 + PCL16,
+  Aa = PCL17 + PCL18,
+  Da = PCL19 + PCL20,
+  Reexp = RE1 + RE2 # adding for 7-factor model
+)
+
+
+# same for df_open
+df3_open <- df_factor_open %>% mutate(
+  RE1 = PCL1 + PCL2 + PCL3,
+  RE2 = PCL4 + PCL5,
+  Av = PCL6 + PCL7,
+  Na = PCL8 + PCL9 + PCL10 + PCL11,
+  An = PCL12 + PCL13 + PCL14,
+  Eb = PCL15 + PCL16,
+  Aa = PCL17 + PCL18,
+  Da = PCL19 + PCL20,
+  Reexp = RE1 + RE2 # adding for 7-factor model
+)
+
+# combine the two datasets
+df_combined <- df3 %>% select(ResponseId, Reexp, RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI, totalGAD, Q42, Q43, Q44, dich, starts_with("PCL")) %>%
+  rbind(df3_open %>% select(ResponseId, Reexp, RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI, totalGAD, Q42, Q43, Q44, dich, starts_with("PCL")))
+```
+
+### We have a total of 664 participants beyond the PCL 28 cutoff
+
+## 8-factors with fear and pain
+```{r echo=FALSE}
+# bootnet
+df4 <- df_combined %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain) 
+
+net <- estimateNetwork(df4, "ggmModSelect")
+plot(net)
+
+```
+
+
+
+## 7-factors with fear and pain
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df4.1 <- df_combined %>% select(Reexp, Av, Na, An, Eb, Aa, Da, fear, pain) 
+
+net1 <- estimateNetwork(df4.1, "ggmModSelect")
+plot(net1)
+```
+
+## 8-factors including Rumination (RTQ) and Anxiety (ASI)
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df5 <- df_combined %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI) 
+
+net5 <- estimateNetwork(df5, "ggmModSelect")
+plot(net5)
+```
+
+## 7-factor model including rumination and anxiety
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df5.1 <- df_combined %>% select(Reexp, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI) 
+
+net5.1 <- estimateNetwork(df5.1, "ggmModSelect")
+plot(net5.1)
+```
+
+## 8-factor model with Rumination and GAD-7
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df6 <- df_combined %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalGAD) 
+
+net6 <- estimateNetwork(df6, "ggmModSelect")
+plot(net6)
+```
+
+## 7-factor model with Rumination and GAD-7
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df6.1 <- df_combined %>% select(Reexp, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalGAD) 
+
+net6.1 <- estimateNetwork(df6.1, "ggmModSelect")
+plot(net6.1)
+```
+
+## Network Analysis of 8-Factor just for Fear
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df7 <- df_combined %>% filter(dich=="Fearful Reaction") %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da) 
+
+net7 <- estimateNetwork(df7, "ggmModSelect")
+plot(net7)
+```
+
+## Now just pain
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df7.1 <- df_combined %>% filter(dich=="Emotional Pain") %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da) 
+
+net7.1 <- estimateNetwork(df7.1, "ggmModSelect")
+plot(net7.1)
+```
+
+## Compare networks
+```{r}
+
+comp1 <- NCT(net7, net7.1, test.edges = TRUE, verbose = FALSE)
+
+plot(comp1, what = "network")
+```
+
+Some differences between edges of the network (mostly re1, re2 with NA, Av and Da), but the network itself is not significantly different.
+
+## Compare networks with the 7-factor model
+
+### Fear
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df8 <- df_combined %>% filter(dich=="Fearful Reaction") %>% select(Reexp, Av, Na, An, Eb, Aa, Da) 
+
+net8 <- estimateNetwork(df8, "ggmModSelect")
+plot(net8)
+```
+
+### Pain
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df8.1 <- df_combined %>% filter(dich=="Emotional Pain") %>% select(Reexp, Av, Na, An, Eb, Aa, Da) 
+
+net8.1 <- estimateNetwork(df8.1, "ggmModSelect")
+plot(net8.1)
+```
+
+### Compare networks (7-factors)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+comp2 <- NCT(net8, net8.1, test.edges = TRUE, verbose = FALSE)
+
+plot(comp2, what = "network")
+```
+
+Results are similar
+
+
+# Using three questions instead of PCL-11
+
+Q42 = Fear and Horror
+Q43 = Guilt and Shame
+Q44 = Anger
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# generate network of just PCL, but without item -11
+
+df_new <- df_combined %>%   
+  select(PCL1:PCL20, Q42, Q43, Q44, -PCL11) 
+
+net_PCL_new_items <- estimateNetwork(df_new, "ggmModSelect")
+plot(net_PCL_new_items)#, layout = "circle")
+```
+
+
+
+## Build 8-factor without PCL11 and with the three items
+
+```{r eval=TRUE, message=TRUE, warning=FALSE, echo=FALSE}
+# build cluster scores
+df3_new <- df_combined %>% mutate(
+  RE1 = PCL1 + PCL2 + PCL3,
+  RE2 = PCL4 + PCL5,
+  Av = PCL6 + PCL7,
+  Na = PCL8 + PCL9 + PCL10,
+  An = PCL12 + PCL13 + PCL14,
+  Eb = PCL15 + PCL16,
+  Aa = PCL17 + PCL18,
+  Da = PCL19 + PCL20,
+  Reexp = RE1 + RE2 # adding for 7-factor model
+)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df4_new <- df3_new %>% select(RE1, RE2, Av, Na, An, Eb, Aa, Da, Q42, Q43, Q44) 
+
+net4_new <- estimateNetwork(df4_new, "ggmModSelect")
+plot(net4_new)
+```
+
+
+
+## Build 7-factor without PCL11 and with the three items
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df4.1_new <- df3_new %>% select(Reexp, Av, Na, An, Eb, Aa, Da, Q42, Q43, Q44) 
+
+net4.1_new <- estimateNetwork(df4.1_new, "ggmModSelect")
+plot(net4.1_new)
+```
+
+## Run similar analysis but on the different groups
+
+### Emotional pain
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df10 <- df3_new %>% filter(dich=="Emotional Pain") %>% select(Reexp, Av, Na, An, Eb, Aa, Da, Q42, Q43, Q44, totalRTQ) 
+
+net10 <- estimateNetwork(df10, "ggmModSelect")
+plot(net10)
+```
+
+### Fearful reaction
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bootnet
+df10.1 <- df3_new %>% filter(dich=="Fearful Reaction") %>% select(Reexp, Av, Na, An, Eb, Aa, Da, Q42, Q43, Q44, totalRTQ) 
+
+net10.1 <- estimateNetwork(df10.1, "ggmModSelect")
+plot(net10.1)
+```
+
+## Bar Plot of each symptom average score for the Fear and Emotional Pain groups
+
+```{r, fig.width=12, fig.height=6}
+
+# generate barplot of average score for each symptom in the fear/emotional groups
+df_new1 <- df_combined %>% select(PCL1:PCL20, Q42, Q43, Q44, dich)
+df_new1 %>% drop_na() %>% group_by(dich) %>% summarise_all(mean) 
+
+df_new1 %>%
+  drop_na() %>%
+  group_by(dich) %>%
+  summarise_all(mean, na.rm = TRUE) %>%
+  pivot_longer(-dich, names_to = "Item", values_to = "Average") %>%
+  mutate(Item = factor(Item, levels = paste0('PCL', 1:20))) %>%
+  ggplot(aes(x = Item, y = Average, fill = dich)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Category", y = "Average Score", title = "Average Scores for Each Item") +
+  theme_minimal()
+
+```
+
+
+
+
+
