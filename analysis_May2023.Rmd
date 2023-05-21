@@ -29,6 +29,11 @@ require(mapview)
 # tables
 require(gtsummary)
 
+#cluster
+require(psych)
+library(cluster)
+library(factoextra)
+
 ```
 
 ```{r import data, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
@@ -82,10 +87,6 @@ df_open <- df_open %>%
 
 df_open[1,20] <- 32
 df_open$age <- as.numeric(df_open$age)
-```
-
-```{r}
-
 ```
 
 
@@ -146,7 +147,7 @@ df3_open <- df_open %>%
 df3_open <- df3_open %>%  ungroup
 
 # adding 28 cutoff
-df_factor <- df3 %>% filter(totalPCL>28) %>%
+df_factor <- df3 %>% #filter(totalPCL>28) %>%
     rename(PCL1 = Q2,
          PCL2 = Q3,
          PCL3 = Q4,
@@ -169,7 +170,7 @@ df_factor <- df3 %>% filter(totalPCL>28) %>%
          PCL20 = Q21)
 
 # the same for df_open
-df_factor_open <- df3_open %>% filter(totalPCL>28) %>%
+df_factor_open <- df3_open %>% #filter(totalPCL>28) %>%
     rename(PCL1 = Q2.1,
          PCL2 = Q3.1,
          PCL3 = Q4.1,
@@ -223,11 +224,11 @@ df3_open <- df_factor_open %>% mutate(
 )
 
 # combine the two datasets
-df_combined <- df3 %>% select(ResponseId, Reexp, RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI, totalGAD, Q42, Q43, Q44, dich, starts_with("PCL")) %>%
-  rbind(df3_open %>% select(ResponseId, Reexp, RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI, totalGAD, Q42, Q43, Q44, dich, starts_with("PCL")))
+df_combined <- df3 %>% select(ResponseId, Reexp, RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI, totalGAD, Q42, Q43, Q44, Q45, Q46, dich, starts_with("PCL")) %>%
+  rbind(df3_open %>% select(ResponseId, Reexp, RE1, RE2, Av, Na, An, Eb, Aa, Da, fear, pain, totalRTQ, totalASI, totalGAD, Q42, Q43, Q44, Q45, Q46, dich, starts_with("PCL")))
 ```
 
-### We have a total of 664 participants beyond the PCL 28 cutoff
+//### We have a total of 664 participants beyond the PCL 28 cutoff
 
 ## 8-factors with fear and pain
 ```{r echo=FALSE}
@@ -347,12 +348,13 @@ plot(comp2, what = "network")
 Results are similar
 
 
-# Using three questions instead of PCL-11
+# Using three questions instead of PCL-11 and two instead of PCL-10
 
 Q42 = Fear and Horror
 Q43 = Guilt and Shame
 Q44 = Anger
-
+Q45 - Blaming yourself
+Q46 - Blaming someone else
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # generate network of just PCL, but without item -11
@@ -449,5 +451,18 @@ df_new1 %>%
 
 
 
+# Factor analysis
 
+Exploratory Factor (EFA)
+Assess whether the new emotion items align with the DSM-5 model by conducting EFA assuming a 4 factor structure.
+```{r}
+# build correlation matrix of the data
+cor_matrix <- df_combined %>% select(PCL1:PCL20, Q42:Q46) %>% drop_na() %>% cor()
 
+# Perform EFA using principal axis factoring (PAF) with oblimin rotation
+efa_result <- fa(cor_matrix, nfactors = 4, rotate = "oblimin", fm = "pa", 
+                 missing = "pairwise", scores = "regression")
+
+# Print the factor loadings
+print(efa_result$loadings, digits = 2, cutoff = 0.4)
+```
