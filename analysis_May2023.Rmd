@@ -466,3 +466,59 @@ efa_result <- fa(cor_matrix, nfactors = 4, rotate = "oblimin", fm = "pa",
 # Print the factor loadings
 print(efa_result$loadings, digits = 2, cutoff = 0.4)
 ```
+
+## Analysis without PCL10 and PCL11
+
+```{r}
+# build correlation matrix of the data
+cor_matrix_2 <- df_combined %>% select(PCL1:PCL20, Q42:Q46, -PCL10, -PCL11) %>% drop_na() %>% cor()
+
+# Perform EFA using principal axis factoring (PAF) with oblimin rotation
+efa_result_2 <- fa(cor_matrix_2, nfactors = 4, rotate = "oblimin", fm = "pa", 
+                 missing = "pairwise", scores = "regression")
+
+# Print the factor loadings
+print(efa_result_2$loadings, digits = 2, cutoff = 0.4)
+```
+## Same but PCA analysis
+
+```{r}
+pca <- prcomp(cor_matrix_2, scale = T)
+fviz_eig(pca)
+
+fviz_pca_ind(pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+```{r}
+cutoff_score <- 0.3 # set cutoff
+
+loadings <- pca$rotation
+
+# Loop through each component
+for (i in seq_len(ncol(loadings))) {
+  cat("Component", i, ":\n")
+  
+  # Get the loadings and items above the cutoff score
+  relevant_items <- row.names(loadings)[abs(loadings[, i]) >= cutoff_score]
+  relevant_loadings <- loadings[abs(loadings[, i]) >= cutoff_score, i]
+  
+  # Display the relevant items with their corresponding loadings
+  for (j in seq_len(length(relevant_items))) {
+    cat(relevant_items[j], ": ", relevant_loadings[j], "\n")
+  }
+  
+  cat("\n")
+}
+```
+
+
+```{r}
+df %>% select(sex, education, dich, age) %>% rbind(df_open %>% select(sex, education, dich, age))  %>%
+  tbl_summary(by = dich, label= list(sex="Sex", education = "Education", age = "Age"))
+
+```
+
