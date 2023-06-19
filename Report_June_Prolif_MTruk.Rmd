@@ -1,0 +1,745 @@
+---
+title: "Analysis of Prolific & MTurk Data - PCL > 28"
+author: "Or Duek & Tobias R. Spiller"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+
+---
+# Introduction & Basic Analysis
+  
+The following code performs basic data analysis of a questionnaire dataset collected through the Prolific ONLY.
+
+## Libraries and Data Reading
+The first part of the code loads necessary libraries and reads the CSV file with the dataset [not shown]
+```{r Load libraries, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+# data handling
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+
+# Basic analysis
+library(psych)
+library(qgraph)
+
+# Table
+library(table1)
+library(cowplot)
+library(see)
+library(gtsummary)
+library(gt)
+
+#Networks
+library(bootnet)
+library(qgraph)
+library(psychonetrics)
+```
+
+## Import, merge, rename
+These steps are not shown in the output.
+
+First, the relevant data is imported.
+```{r Import data, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+# read data
+prolific_cleaned <- read_csv("df_combined.csv")
+mTurk_cleaned <- read_csv("mTurk_cleaned.csv")
+
+mTurk_cleaned <- mTurk_cleaned %>%
+  select(-totalPCL) %>% 
+  mutate(dich = case_when(
+    dich == 2 ~ "Fearful Reaction",
+    dich == 1 ~ "Emotional Pain",
+    TRUE ~ as.character(dich)
+  ))  %>%
+    rename(PCL.Total = `PCL Total`)  
+
+df <- prolific_cleaned# bind_rows(prolific_cleaned,mTurk_cleaned)
+```
+
+Then we rename some relevant variables to make them consistent with others.
+```{r Rename variables, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+# rename variables
+df_1 <- df %>% 
+  rename(emo_pain_single = pain,
+         fear_single = fear,
+         totalPCL = PCL.Total,
+         PCL_fear_horror = Q42,
+         PCL_shame_guilt = Q43,
+         PCL_anger = Q44) %>% 
+    mutate(DMS_5_Reexp = PCL1 + PCL2 + PCL3 + PCL4 + PCL5,
+         DMS_5_Avoidance = PCL6 + PCL7,
+         DMS_5_Negative_Cognitions = PCL8 + PCL9 + PCL10 + PCL11 + PCL12 + PCL13 + PCL14,
+         DMS_5_Arousal = PCL15 + PCL16 + PCL17 + PCL18 + PCL19 + PCL20,
+         
+         totalPCL_minus_item_11 = PCL1 + PCL2 + PCL3 + PCL4 + PCL5 + PCL6 + PCL7 + PCL8 + PCL9 + 
+           PCL10 + PCL12 + PCL13 + PCL14 + PCL15 + PCL16 + PCL17 + PCL18 + PCL19 + PCL20,
+         DMS_5_Negative_Cognitions_minus_11 = PCL8 + PCL9 + PCL10 + PCL11 + PCL12 + PCL13 + PCL14)  %>% filter(totalPCL > 28)
+```
+
+## Descriptives
+Then, we plot the summary statistics.
+```{r Table 1, echo=FALSE, message=FALSE}
+# Rename data frame
+data_table1_descriptive <- df_1 
+
+# Add labels for the plot
+table1::label(data_table1_descriptive$emo_pain_single) <- "Emotional Pain (Single)"
+table1::label(data_table1_descriptive$fear_single) <- "Fear (Single)"
+table1::label(data_table1_descriptive$dich) <- "Binary choice: What is more botherin Emotional Pain or Fear"
+
+table1::label(data_table1_descriptive$totalPCL) <- "PTSD (PCL-5)"
+table1::label(data_table1_descriptive$totalRTQ) <- "Rumination (RTQ)"
+table1::label(data_table1_descriptive$totalGAD) <- "Anxiety (GAD-7)"
+table1::label(data_table1_descriptive$totalASI) <- "Anxiety (ASI)"
+
+# Define design theme of the Plot
+theme_gtsummary_journal(journal = "nejm")
+theme_gtsummary_compact()
+
+# Plot the relevant data
+data_table1_descriptive %>%
+  select(age, sex, education,emo_pain_single, fear_single, dich, totalPCL,DMS_5_Reexp, totalRTQ,  totalGAD, totalASI) %>% 
+  tbl_summary(by=dich) %>% 
+  modify_header(label ~ "**Variable**") %>%
+  modify_caption("Table 1. Sample Characteristics") %>%
+  bold_labels()
+```  
+
+Then, we check the distribution of the different questionnaire scores to check their properties.
+```{r Sumscore distributions, echo=FALSE, message=FALSE, warning=FALSE} 
+hist(data_table1_descriptive$totalPCL, main = "Total PCL Score Distribution")
+hist(data_table1_descriptive$totalRTQ, main = "Total RTQ Score Distribution")
+hist(data_table1_descriptive$totalGAD, main = "Total GAD Score Distribution")
+hist(data_table1_descriptive$totalASI, main = "Total ASI Score Distribution")
+```
+
+# Analysis
+## Fear & Emotional Pain
+First, we focus on the single items assessing fear and emotional pain.
+```{r Distribution, echo=FALSE, message=FALSE, warning=FALSE}
+# Plotting distributions
+p1 <- ggplot(df_1, aes(x=emo_pain_single)) +
+  geom_histogram(bins = 30, fill="blue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title="Distribution of Emotional Pain", x="Severity (0-10)", y="Frequency")
+  
+p2 <- ggplot(df_1, aes(x=fear_single)) +
+  geom_histogram(bins = 30, fill="red", alpha = 0.5) +
+  theme_minimal() +
+  labs(title="Distribution of Fear", x="Severity (0-10)", y="Frequency")
+
+gridExtra::grid.arrange(p1, p2, nrow=2)
+```
+
+Next, we assess the strength of the correlation between the two. We chose the spearman correlation coefficient because both were non-normally distributed.
+```{r Correlation, echo=FALSE, warning=FALSE}
+# Perform correlation analysis
+correlation <- cor.test(df_1$emo_pain_single, df_1$fear_single, method = "spearman")
+correlation
+```
+
+We then plot the data against each other.
+```{r Scatter Plot, echo=FALSE, warning=FALSE}
+# Create a scatter plot with a correlation line
+ggplot(df_1, aes(x=emo_pain_single, y=fear_single)) +
+  geom_point() +
+  geom_jitter(width = 0.3, height = 0.3) +
+  geom_smooth(method=lm, se=FALSE, color="red") +
+  theme_minimal() +
+  labs(title="Scatter plot of Emotional Pain vs Fear", x="Emotional Pain", y="Fear")
+```
+
+Finally, we check adjust the relationship for PTSD severity.
+```{r Regression, echo=FALSE}
+# Perform a regression analysis
+model <- lm(emo_pain_single ~ totalPCL + fear_single, data = df_1)
+summary(model)
+```
+
+## Network Analysis
+In the following sections, different network (NW) analyses are conducted. In each, Emotional Pain and Fear are included into the models. In the first set of NW-models, symptoms of PTSD (as individuals nodes or grouped to clusters) are included. In the second, the NW-models include addiontal constructs like Anxiety & Rumination. In the third set, the PCL item 11 (“Having strong negative feelings such as fear, horror, anger, guilt, or shame?”) is split into two single items (“Having strong negative feelings such as fear or horror” & “Having strong negative feelings such as guilt, or shame?). In the fourth set, associations with the PTSD 8-Factor model are tested. In the final set, all variables are included.
+
+## 1. PTSD
+### 1.1 Factors
+```{r PTSD factors NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_clusters <- df_1 %>% 
+  select(DMS_5_Reexp:DMS_5_Arousal, emo_pain_single, fear_single) %>% 
+  rename(Emo_Pain  = emo_pain_single, 
+        Fear = fear_single,
+        Reexp = DMS_5_Reexp,
+        Avoid = DMS_5_Avoidance,
+        Neg_Cog = DMS_5_Negative_Cognitions,
+        Arousal = DMS_5_Arousal)
+
+NW_PTSD_clusters <- estimateNetwork(df_network_PTSD_clusters, "ggmModSelect")
+```
+
+```{r PTSD factors NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_PTSD_clusters, layout = "circle", 
+     title = "Association swith DSM-5 PTSD clusters")
+```
+
+### 1.2 Symptoms
+```{r PTSD symptoms NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_all_symptoms <- df_1 %>% 
+  select(PCL1:PCL20, emo_pain_single, fear_single) %>% 
+  rename(Emo_Pain  = emo_pain_single, 
+        Fear = fear_single)
+
+NW_PTSD_symptoms <- estimateNetwork(df_network_PTSD_all_symptoms, "ggmModSelect")
+```
+
+```{r PTSD symptoms NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_PTSD_symptoms, layout = "circle",
+     title = "Associations with PTSD symptoms")
+```
+
+## 2. Anxiety & Rumination
+### 2.1 Total Scores
+```{r Anx Rum total NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_External_Sumscores <- df_1 %>% 
+  select(totalPCL, totalGAD, totalRTQ, emo_pain_single, fear_single) %>% 
+  rename(Emo_Pain  = emo_pain_single, 
+        Fear = fear_single,
+        PCL =  totalPCL, 
+        GAD = totalGAD, 
+        RTQ = totalRTQ)
+
+NW_External_Sumscores <- estimateNetwork(df_network_External_Sumscores, "ggmModSelect")
+```
+
+```{r Anx Rum total NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_Sumscores, layout = "circle",
+     title = "Associations with PTSD, Anxiety & Rumination")
+```
+
+### 2.2 Factors
+```{r Anx Rum factors NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_External_clusters <- df_1 %>% 
+  select(DMS_5_Reexp:DMS_5_Arousal,  totalGAD, totalRTQ, emo_pain_single, fear_single) %>% 
+  rename(Emo_Pain  = emo_pain_single, 
+        Fear = fear_single,
+        Reexp = DMS_5_Reexp,
+        Avoid = DMS_5_Avoidance,
+        Neg_Cog = DMS_5_Negative_Cognitions,
+        Arousal = DMS_5_Arousal,
+        GAD = totalGAD, 
+        RTQ = totalRTQ)
+
+NW_External_clusters <- estimateNetwork(df_network_External_clusters, "ggmModSelect")
+```
+
+```{r Anx Rum factors NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_clusters, layout = "circle",
+     title = "Associations with PTSD DSM5 factors, Anxiety & Rumination")
+```
+
+### 2.3 Symptoms
+```{r Anx Rum Symptoms NW, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+df_network_External_all_symptoms <- df_1 %>% 
+  select(PCL1:PCL20, emo_pain_single, fear_single)
+
+NW_External_all_symptoms <- estimateNetwork(df_network_External_all_symptoms, "ggmModSelect")
+```
+
+```{r PAnx Rum Symptoms NW plot, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+plot(NW_External_all_symptoms, layout = "circle")
+plot(NW_External_all_symptoms)
+```
+
+## 3. PCL Item 11
+For these claculations, as the PCL item 11 has been split up, item 11 is removed from the total PCL score
+### 3.1 Total Scores
+```{r PCL 11 sum NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_11_Sum <- df_1 %>% 
+  select(totalPCL_minus_item_11, PCL_fear_horror, PCL_shame_guilt, emo_pain_single, fear_single) %>% 
+    rename(Emo_Pain  = emo_pain_single, 
+        Fear = fear_single,
+        Horror = PCL_fear_horror,
+        Shame = PCL_shame_guilt,
+        PTSD = totalPCL_minus_item_11)
+  
+NW_External_PTSD_11_Sum <- estimateNetwork(df_network_PTSD_11_Sum, "ggmModSelect")
+```
+
+```{r PCL 11 sum NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_PTSD_11_Sum, layout = "circle",
+     title = "Associations with PTSD, Horror & Shame")
+```
+
+### 3.2 Factors
+```{r PCL 11 factors NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_11_clusters <- df_1 %>% 
+  select(DMS_5_Reexp, DMS_5_Avoidance, DMS_5_Avoidance, 
+         DMS_5_Negative_Cognitions_minus_11, DMS_5_Arousal,
+         PCL_fear_horror, PCL_shame_guilt, emo_pain_single, fear_single) %>% 
+    rename(Emo_Pain  = emo_pain_single, 
+        Fear = fear_single,
+        Horror = PCL_fear_horror,
+        Shame = PCL_shame_guilt,
+        Reexp = DMS_5_Reexp,
+        Avoid = DMS_5_Avoidance,
+        Neg_Cog = DMS_5_Negative_Cognitions_minus_11,
+        Arousal = DMS_5_Arousal)
+
+NW_External_PTSD_11_clusters <- estimateNetwork(df_network_PTSD_11_clusters, "ggmModSelect")
+```
+
+```{r PCL 11 factors NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_PTSD_11_clusters, layout = "circle",
+     title = "Associations with PTSD DSM Factors, Horror & Shame")
+
+```
+
+#### Remove emotional pain - just shame and fear
+
+```{r PCL 11 factors NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_11_clusters2 <- df_1 %>% 
+  select(DMS_5_Reexp, DMS_5_Avoidance, DMS_5_Avoidance, 
+         DMS_5_Negative_Cognitions_minus_11, DMS_5_Arousal,
+         PCL_fear_horror, PCL_shame_guilt,  fear_single) %>% 
+    rename(
+        Fear = fear_single,
+        Horror = PCL_fear_horror,
+        Shame = PCL_shame_guilt,
+        Reexp = DMS_5_Reexp,
+        Avoid = DMS_5_Avoidance,
+        Neg_Cog = DMS_5_Negative_Cognitions_minus_11,
+        Arousal = DMS_5_Arousal)
+
+NW_External_PTSD_11_clusters2 <- estimateNetwork(df_network_PTSD_11_clusters2, "ggmModSelect")
+```
+
+```{r PCL 11 factors NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_PTSD_11_clusters2, layout = "circle",
+     title = "Associations with PTSD DSM Factors, Horror & Shame")
+```
+
+
+### 3.3 Symptoms
+```{r PCL 11 symptoms NW, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_11_all_symptoms <- df_1 %>% 
+  select(PCL1:PCL20, PCL_fear_horror, PCL_shame_guilt,emo_pain_single, fear_single)
+
+NW_PTSD_11_all_symptoms <- estimateNetwork(df_network_PTSD_11_all_symptoms, "ggmModSelect")
+```
+
+```{r PCL 11 symptoms NW plot, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+plot(NW_PTSD_11_all_symptoms, layout = "circle")
+plot(NW_PTSD_11_all_symptoms)
+```
+
+
+## 4. 8-Factor Model
+```{r 8-Factor Model NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_8_factor <- df_1 %>% 
+  select(RE1:Da, emo_pain_single, fear_single) %>% 
+  rename(Emo_Pain  = emo_pain_single, 
+         Fear = fear_single)
+
+NW_PTSD_8_factor <- estimateNetwork(df_network_PTSD_8_factor, "ggmModSelect")
+```
+
+```{r 8-Factor Model NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_PTSD_8_factor, layout = "circle",
+     title = "Associations with PTSD 8 factor model")
+```
+
+
+## 5. Full models
+### 5.1 Factors
+```{r Full Factors NW, message=FALSE, warning=FALSE, include=FALSE}
+### Clusters
+df_network_full_clusters <- df_1 %>% 
+  select(RE1:Da, 
+         PCL_fear_horror, PCL_shame_guilt, 
+          totalGAD, totalRTQ, 
+         emo_pain_single, fear_single) %>% 
+  rename(Emo_Pain  = emo_pain_single, 
+         Fear = fear_single,
+         Horror = PCL_fear_horror,
+         Shame = PCL_shame_guilt,
+         GAD = totalGAD, 
+         RTQ = totalRTQ)
+
+NW_External_full_clusters <- estimateNetwork(df_network_full_clusters, "ggmModSelect")
+```
+
+```{r Full Factors NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_full_clusters, layout = "circle")
+```
+
+
+### 8-factor with shame and not emotional pain
+```{r Full Factors NW, message=FALSE, warning=FALSE, include=FALSE}
+### Clusters
+df_network_full_clusters2 <- df_1 %>% 
+  select(RE1:Da, 
+         PCL_fear_horror, PCL_shame_guilt, 
+         totalRTQ,  
+          fear_single) %>% 
+  rename(
+         Fear = fear_single,
+         Horror = PCL_fear_horror,
+         Shame = PCL_shame_guilt,
+         #GAD = totalGAD, 
+        # ASI = totalASI,
+         RTQ = totalRTQ)
+  
+
+NW_External_full_clusters2 <- estimateNetwork(df_network_full_clusters2, "ggmModSelect")
+```
+
+```{r Full Factors NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_External_full_clusters2, layout = "circle")
+```
+
+### 5.2 Symptoms
+```{r Full Symptoms NW, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+df_network_FULL_all_symptoms <- df_1 %>% 
+  select(PCL1:PCL11,PCL27_1:PCL27_9,PCL28_1:PCL28_7,PCL40_1:PCL40_10, PCL32, PCL33, emo_pain_single, fear_single)
+
+NW_FULL_all_symptoms <- estimateNetwork(df_network_FULL_all_symptoms, "ggmModSelect")
+```
+
+```{r Full Symptoms NW plot, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+plot(NW_FULL_all_symptoms, layout = "circle")
+plot(NW_FULL_all_symptoms)
+```
+
+
+# Create a screening tool
+## Single-item basis
+```{r Single item median split, echo=FALSE, message=FALSE, warning=FALSE}
+# Calculate median of 'emo_pain_single'
+median_emo_pain_single <- median(df_1$emo_pain_single, na.rm = TRUE)
+
+median_fear_single <- median(df_1$fear_single, na.rm = TRUE)
+
+Q1_emo_pain_single <- quantile(df_1$emo_pain_single, 0.25, na.rm = TRUE)
+PCL2_emo_pain_single <- quantile(df_1$emo_pain_single, 0.75, na.rm = TRUE)
+
+Q1_fear_single <- quantile(df_1$fear_single, 0.25, na.rm = TRUE)
+PCL2_fear_single <- quantile(df_1$fear_single, 0.75, na.rm = TRUE)
+
+
+# Add new column
+df_2 <- df_1 %>%
+  mutate(emo_pain_single_median = ifelse(emo_pain_single >= median_emo_pain_single, 1, 0),
+         fear_single_median = ifelse(fear_single >= median_fear_single, 1, 0),
+         emo_pain_single_quartile = ifelse(emo_pain_single >= PCL2_emo_pain_single, "Top 25%", ifelse(emo_pain_single <= Q1_emo_pain_single, "Bottom 25%", "Middle 50%")),
+         fear_single_quartile = ifelse(fear_single >= PCL2_fear_single, "Top 25%", ifelse(fear_single <= Q1_fear_single, "Bottom 25%", "Middle 50%")))
+
+df_3 <- df_2 %>%
+  select(emo_pain_single, fear_single) %>%
+  na.omit() %>%
+  scale() %>% 
+  as.tibble()
+
+ggplot(df_3, aes(x = emo_pain_single, y = fear_single, color=dich)) +
+  geom_jitter(width = 0.2, height = 0.2) +
+  geom_smooth(method = lm, se = FALSE, color = "red") +
+  theme_minimal() +
+  labs(title = "Scatter plot of standartized Emotional Pain vs Fear", x="Emotional Pain", y="Fear", x = "emo_pain_single", y = "fear_single") +
+  geom_vline(xintercept = 0, size = 1.5) +
+  geom_hline(yintercept = 0, size = 1.5)
+```
+
+If we apply a median split for Emotional Pain and Fear and count the subjects with the corresponding counts we get:
+```{r Single item median split count, echo=FALSE, message=FALSE, warning=FALSE}
+# Create a new variable to classify subjects based on 'emo_pain_single_median' and 'fear_median'
+df_2 <- df_2 %>%
+  mutate(pain_fear_category = case_when(
+    emo_pain_single_median == 1 & fear_single_median == 1 ~ "High Pain and High Fear",
+    emo_pain_single_median == 1 & fear_single_median == 0 ~ "High Pain and Low Fear",
+    emo_pain_single_median == 0 & fear_single_median == 1 ~ "Low Pain and High Fear",
+    emo_pain_single_median == 0 & fear_single_median == 0 ~ "Low Pain and Low Fear"
+  ))
+
+# Count the number of subjects in each category
+category_counts <- table(df_2$pain_fear_category)
+category_counts
+
+```
+
+```{r Single item quartile split count, echo=FALSE, message=FALSE, warning=FALSE}
+# Create a new variable to classify subjects based on 'emo_pain_single_quartile' and 'fear_quartile'
+df_2 <- df_2 %>%
+  mutate(pain_fear_quartile_category = case_when(
+    emo_pain_single_quartile == "Top 25%" & fear_single_quartile == "Top 25%" ~ "High Pain and High Fear",
+    emo_pain_single_quartile == "Top 25%" & fear_single_quartile == "Bottom 25%" ~ "High Pain and Low Fear",
+    emo_pain_single_quartile == "Bottom 25%" & fear_single_quartile == "Top 25%" ~ "Low Pain and High Fear",
+    emo_pain_single_quartile == "Bottom 25%" & fear_single_quartile == "Bottom 25%" ~ "Low Pain and Low Fear",
+    TRUE ~ "Other"
+  ))
+
+# Count the number of subjects in each category
+quartile_category_counts <- table(df_2$pain_fear_quartile_category)
+quartile_category_counts
+
+```
+
+## Multi-item basis
+We create a score for Emotional Pain and Fear based on items that were uniquely related to the two items. This should increase reliability. First, we create the score.
+```{r Multi item score, echo=TRUE, message=FALSE, warning=FALSE}
+df_screening_tool <- df_1 %>% 
+  mutate(screening_score_fear = PCL1 + PCL2 + PCL3 + PCL7 + PCL_fear_horror,
+         screening_score_emo_pain_single = PCL12 + PCL13 + PCL14 + totalRTQ) %>% mutate(across(starts_with("screening_score"), scale))
+# I have removed the scaling for ease of computing median etc. But, for plotting porpuses, scaling is preffered # totalRTQ
+#%>% #mutate(across(starts_with("screening_score"), scale))
+```
+
+Then, we plot the distribution of the new scores.
+```{r Multi item score plot, echo=FALSE, message=FALSE, warning=FALSE}
+# Plotting distributions
+p1 <- ggplot(df_screening_tool, aes(x=screening_score_emo_pain_single)) +
+  geom_histogram(bins = 30, fill="blue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title="Distribution of Emotional Pain screening score", x="Severity", y="Frequency")
+  
+p2 <- ggplot(df_screening_tool, aes(x=screening_score_fear)) +
+  geom_histogram(bins = 30, fill="red", alpha = 0.5) +
+  theme_minimal() +
+  labs(title="Distribution of Fear screening score", x="Severity", y="Frequency")
+
+gridExtra::grid.arrange(p1, p2, nrow=2)
+```
+
+```{r Screening scores correlation, echo=FALSE, warning=FALSE}
+correlation_sc <- cor.test(df_screening_tool$screening_score_emo_pain_single, df_screening_tool$screening_score_fear, method = "spearman")
+correlation_sc
+```
+
+```{r Screening scores scatter plot, echo=FALSE, warning=FALSE}
+# Create a scatter plot with a correlation line
+ggplot(df_screening_tool, aes(x=screening_score_emo_pain_single, y=screening_score_fear, color=dich)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0.2) +
+  geom_smooth(method=lm, se=FALSE, color="red") +
+  theme_minimal() +
+  labs(title="Scatter plot of emo_pain_single vs fear", x="emo_pain_single", y="fear")+
+  geom_vline(xintercept = 0, size = 1.5) +
+  geom_hline(yintercept = 0, size = 1.5) 
+```
+
+
+Now we use the same categorical table to show how many are in each section
+```{r new screening tool Ns}
+# Calculate median of 'emo_pain_single'
+median_emo_pain_srceen <- median(df_screening_tool$screening_score_emo_pain_single, na.rm = TRUE)
+median_fear_screen <- median(df_screening_tool$screening_score_fear, na.rm = TRUE)
+
+df_screening_tool_2 <- df_screening_tool %>%
+  mutate(emo_pain_screen_median = ifelse(screening_score_emo_pain_single >= median_emo_pain_srceen, 1, 0),
+         fear_screen_median = ifelse(screening_score_fear >= median_fear_screen, 1, 0))
+
+df_screening_tool_2 <- df_screening_tool_2 %>% 
+  mutate(pain_fear_category_screen = case_when(
+    emo_pain_screen_median == 1 & fear_screen_median == 1 ~ "High Pain and High Fear",
+    emo_pain_screen_median == 1 & fear_screen_median == 0 ~ "High Pain and Low Fear",
+    emo_pain_screen_median == 0 & fear_screen_median == 1 ~ "Low Pain and High Fear",
+    emo_pain_screen_median == 0 & fear_screen_median == 0 ~ "Low Pain and Low Fear",
+  ))
+
+# Count the number of subjects in each category
+category_counts <- table(df_screening_tool_2$pain_fear_category_screen)
+category_counts   
+
+```
+
+
+Here, we test the correlation of the scores with the single items. First, we assess Emotional Pain.
+```{r emotional pain screening vs single correlation, echo=FALSE, warning=FALSE}
+correlation_em <- cor.test(df_screening_tool$screening_score_emo_pain_single, df_screening_tool$emo_pain_single, method = "spearman")
+correlation_em
+```
+And plot the relationship.
+```{r emotional pain screening vs single scatter, echo=FALSE, warning=FALSE}
+ggplot(df_screening_tool, aes(x=screening_score_emo_pain_single, y=emo_pain_single)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0.2) +
+  geom_smooth(method=lm, se=FALSE, color="red") +
+  theme_minimal() +
+  labs(title="Scatter plot of Screening Score for Emotional Pain vs single item", x="screening", y="single")
+```
+Second, we assess Fear.
+```{r fear screening vs single correlation, echo=FALSE, warning=FALSE}
+correlation_fe <- cor.test(df_screening_tool$screening_score_fear, df_screening_tool$fear_single, method = "spearman")
+correlation_fe
+
+```
+And plot the relationship.
+```{r fear screening vs scatter, echo=FALSE, warning=FALSE}
+ggplot(df_screening_tool, aes(x=screening_score_fear, y=fear_single)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0.2) +
+  geom_smooth(method=lm, se=FALSE, color="red") +
+  theme_minimal() +
+  labs(title="Scatter plot of Screening Score for Fear vs single item", x="screening", y="single")
+```
+
+```{r}
+shame_scale <- scale(df_1$PCL_shame_guilt)
+ggplot(df_1, aes(x =PCL_shame_guilt, y = fear_single, color= dich)) +
+  geom_jitter(width = 0.2, height = 0.2) +
+  geom_smooth(method = lm, se = FALSE, color = "red") +
+  theme_minimal() +
+  labs(title = "Scatter plot of standartized Shame vs Fear", x="Shame", y="Fear", x = "Shame", y = "fear_single")
+
+
+cor.test(df_1$PCL_shame_guilt, df_1$fear_single)
+```
+
+
+## Using Shame instead of emotional pain
+### Network analysis (8-factor)
+
+
+```{r 8-Factor Model NW, message=FALSE, warning=FALSE, include=FALSE}
+df_network_PTSD_8_factorS <- df_1 %>% 
+  select(RE1:Da, fear_single, PCL_shame_guilt) %>% 
+  rename(Fear = fear_single,
+         Shame = PCL_shame_guilt)
+
+NW_PTSD_8_factorS <- estimateNetwork(df_network_PTSD_8_factorS, "ggmModSelect")
+```
+
+```{r 8-Factor Model NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_PTSD_8_factorS, layout = "circle",
+     title = "Associations with PTSD 8 factor model Shame")
+```
+### Building shame score
+
+
+We create a score for Emotional Pain and Fear based on items that were uniquely related to the two items. This should increase reliability. First, we create the score.
+```{r Multi item score, echo=TRUE, message=FALSE, warning=FALSE}
+df_screening_tool <- df_1 %>% 
+  mutate(screening_score_fear = PCL1 + PCL2 + PCL3 + PCL7 + PCL_fear_horror,
+         screening_score_shame = Na + PCL_shame_guilt + PCL4 + PCL5) %>% mutate(across(c(screening_score_fear, screening_score_shame), ~as.vector(scale(.))))
+  
+```
+
+Then, we plot the distribution of the new scores.
+```{r Multi item score plot, echo=FALSE, message=FALSE, warning=FALSE}
+# Plotting distributions
+p1 <- ggplot(df_screening_tool, aes(x=screening_score_shame)) +
+  geom_histogram(bins = 30, fill="blue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title="Distribution of Shame screening score", x="Severity", y="Frequency")
+  
+p2 <- ggplot(df_screening_tool, aes(x=screening_score_fear)) +
+  geom_histogram(bins = 30, fill="red", alpha = 0.5) +
+  theme_minimal() +
+  labs(title="Distribution of Fear screening score", x="Severity", y="Frequency")
+
+gridExtra::grid.arrange(p1, p2, nrow=2)
+```
+
+```{r Screening scores correlation, echo=FALSE, warning=FALSE}
+correlation_sc <- cor.test(df_screening_tool$screening_score_shame, df_screening_tool$screening_score_fear, method = "spearman")
+correlation_sc
+```
+
+```{r Screening scores scatter plot, echo=FALSE, warning=FALSE}
+# Create a scatter plot with a correlation line
+ggplot(df_screening_tool, aes(x=screening_score_shame, y=screening_score_fear)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0.2) +
+  geom_smooth(method=lm, se=FALSE, color="red") +
+  theme_minimal() +
+  labs(title="Scatter plot of emo_pain_single vs fear", x="shame", y="fear")+
+  geom_vline(xintercept = 0, size = 1.5) +
+  geom_hline(yintercept = 0, size = 1.5) 
+```
+Counting categories
+Now we use the same categorical table to show how many are in each section
+```{r new screening tool Ns}
+# Calculate median of 'emo_pain_single'
+median_shame_srceen <- median(df_screening_tool$screening_score_shame, na.rm = TRUE)
+median_fear_screen <- median(df_screening_tool$screening_score_fear, na.rm = TRUE)
+
+df_screening_tool_2 <- df_screening_tool %>%
+  mutate(shame_screen_median = ifelse(screening_score_shame >= median_shame_srceen, 1, 0),
+         fear_screen_median = ifelse(screening_score_fear >= median_fear_screen, 1, 0))
+
+
+df_screening_tool_2 <- df_screening_tool_2 %>% 
+  mutate(pain_fear_category_screen = case_when(
+    shame_screen_median == 1 & fear_screen_median == 1 ~ "High Pain and High Fear",
+    shame_screen_median == 1 & fear_screen_median == 0 ~ "High Pain and Low Fear",
+    shame_screen_median == 0 & fear_screen_median == 1 ~ "Low Pain and High Fear",
+    shame_screen_median == 0 & fear_screen_median == 0 ~ "Low Pain and Low Fear",
+  ))
+# Count the number of subjects in each category
+category_counts <- table(df_screening_tool_2$pain_fear_category_screen)
+category_counts   
+
+```
+
+### Choose the ones at least 0.5 SE from the middle
+```{r}
+df_screening_tool_3 <- df_screening_tool_2 %>% 
+  mutate(pain_fear_category_screen = case_when(
+    screening_score_shame > 0.5 & screening_score_fear > 0.5 ~ "High Pain and High Fear",
+    screening_score_shame > 0.5 & screening_score_fear < -0.5 ~ "High Pain and Low Fear",
+    screening_score_shame < -0.5 & screening_score_fear > 0.5 ~ "Low Pain and High Fear",
+    screening_score_shame < -0.5 & screening_score_fear < -0.5 ~ "Low Pain and Low Fear",
+  ))
+
+# Count the number of subjects in each category
+category_counts <- table(df_screening_tool_3$pain_fear_category_screen)
+category_counts
+```
+
+## Network analysis with "new PCL"
+Removing items 10 and 11 and adding Q42-Q46
+
+```{r}
+df_new <- df %>% 
+  rename(emo_pain_single = pain,
+         fear_single = fear,
+         totalPCL = PCL.Total,
+         PCL_fear_horror = Q42,
+         PCL_shame_guilt = Q43,
+         PCL_anger = Q44,
+         PCL_blameSelf = Q45,
+         PCL_blameElse = Q46) %>% 
+  select(PCL1:PCL20,PCL_fear_horror,PCL_shame_guilt,PCL_anger, PCL_blameSelf,PCL_blameElse, -PCL10, -PCL11) %>% drop_na()
+```
+
+### Estimate network without filtering (i.e., all pcl scores)
+```{r}
+NW_PTSD_newPCL <- estimateNetwork(df_new, "ggmModSelect")
+```
+
+```{r 8-Factor Model NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_PTSD_newPCL, 
+     title = "New PCL")
+```
+### Estimate network with PCL=28 cutoff
+
+```{r}
+df_newCut <-  df %>% 
+  rename(emo_pain_single = pain,
+         fear_single = fear,
+         totalPCL = PCL.Total,
+         PCL_fear_horror = Q42,
+         PCL_shame_guilt = Q43,
+         PCL_anger = Q44,
+         PCL_blameSelf = Q45,
+         PCL_blameElse = Q46) %>% filter(totalPCL > 28) %>% 
+  select(PCL1:PCL20,PCL_fear_horror,PCL_shame_guilt,PCL_anger, PCL_blameSelf,PCL_blameElse, -PCL10, -PCL11) %>% drop_na()
+```
+
+Network
+```{r}
+NW_PTSD_newPCL_cutOff <- estimateNetwork(df_newCut, "ggmModSelect")
+```
+
+```{r 8-Factor Model NW plot, echo=FALSE, message=FALSE, warning=FALSE}
+plot(NW_PTSD_newPCL_cutOff, 
+     title = "New PCL")
+```
+

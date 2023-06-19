@@ -65,10 +65,14 @@ df1 <- df %>%  rename(
   Q37_9 = `PHQ-9 Q37_9 Thoughts that you would be better off dead, or of hurting yourself in some way`,
   ) 
 
-df1 <- df1 %>% select(ResponseId,age, sex, dich, fear, pain, Q42:Q46, starts_with('PCL'), starts_with('Q38'), starts_with('Q37'), starts_with('RTQ'), 
+df1 <- df1 %>% select(ResponseId,age, sex, education, dich, fear, pain, Q42:Q46, starts_with('PCL'), starts_with('Q38'), starts_with('Q37'), starts_with('RTQ'), 
               starts_with('ASI')) %>% distinct(ResponseId, .keep_all = TRUE) 
 
 df2 <- df1 %>% drop_na() %>% group_by(ResponseId) %>% mutate(
+  sex = factor(sex, levels = 1:4, labels = c("Male", "Female", "Non-Binary/Other", "Prefer Not to say")),
+  education = factor(education, levels = 1:7, labels = c(
+    "lessHighSchool", "HighSchool_GED", "College_nodegree",
+    "technical_degree", "BA", "MA/PhD", "Prefer_not")),
   totalPCL = sum(across(PCL1:PCL20)),
   totalGAD = sum(across(Q38_1:Q38_7)),
   totalPHQ = sum(across(Q37_1:Q37_9)),
